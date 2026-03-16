@@ -13,6 +13,7 @@ pub enum NetworkError {
     #[error("Failed to scan networks: {0}")]
     ScanFailed(String),
     #[error("Connection failed: {0}")]
+    #[allow(dead_code)]
     ConnectionFailed(String),
     #[error("Internal error: {0}")]
     Internal(String),
