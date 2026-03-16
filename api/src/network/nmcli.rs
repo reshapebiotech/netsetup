@@ -20,10 +20,86 @@ impl NmcliNetworkController {
     }
 }
 
+/// Helper to parse nmcli -t output respecting escaped colons.
+fn parse_nmcli_terse_line(line: &str) -> Vec<String> {
+    let mut fields = Vec::new();
+    let mut current = String::new();
+    let mut chars = line.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            if let Some(next_c) = chars.peek() {
+                if *next_c == ':' || *next_c == '\\' {
+                    current.push(*next_c);
+                    chars.next(); // consume escaped char
+                    continue;
+                }
+            }
+            current.push(c);
+        } else if c == ':' {
+            fields.push(current);
+            current = String::new();
+        } else {
+            current.push(c);
+        }
+    }
+    fields.push(current);
+    fields
+}
+
+pub fn parse_scan_output(stdout: &str) -> Vec<WifiNetwork> {
+    let mut networks = Vec::new();
+
+    for line in stdout.lines() {
+        let fields = parse_nmcli_terse_line(line);
+        // We requested: BSSID,SSID,SIGNAL,SECURITY
+        // Format: BSSID (often not escaped if MAC, but parse_nmcli_terse_line handles it?), 
+        // Wait, nmcli escapes MAC colons! e.g., 00\:11\:22\:33\:44\:55
+        // So a BSSID might actually be parsed as a single field if properly escaped by nmcli.
+        // Let's check how nmcli formats BSSID in terse mode. Yes, it escapes them: `00\:11\:22\:33\:44\:55:SSID:SIGNAL:SECURITY`
+        if fields.len() >= 4 {
+            let ssid = fields[1].clone();
+            if ssid.is_empty() {
+                continue;
+            }
+
+            let signal = fields[2].parse::<u8>().unwrap_or(0);
+            let security = fields[3..].join(":"); // Combine remainder just in case
+
+            networks.push(WifiNetwork {
+                ssid,
+                signal_strength: signal,
+                security,
+            });
+        }
+    }
+
+    networks.sort_by(|a, b| b.signal_strength.cmp(&a.signal_strength));
+    networks.dedup_by(|a, b| a.ssid == b.ssid);
+
+    networks
+}
+
+pub fn parse_saved_output(stdout: &str) -> Vec<SavedNetwork> {
+    let mut saved = Vec::new();
+
+    for line in stdout.lines() {
+        let fields = parse_nmcli_terse_line(line);
+        // We requested: UUID,NAME,TYPE
+        if fields.len() >= 3 && fields[2] == "802-11-wireless" {
+            saved.push(SavedNetwork {
+                id: fields[0].clone(),
+                ssid: fields[1].clone(),
+            });
+        }
+    }
+
+    saved
+}
+
 #[async_trait]
 impl NetworkController for NmcliNetworkController {
     async fn scan_wifi(&self) -> NetResult<Vec<WifiNetwork>> {
-        // Request a rescan first, don't strictly care if it fails (sometimes rate limited)
         let _ = Command::new("nmcli")
             .args(&["device", "wifi", "rescan"])
             .output()
@@ -48,40 +124,7 @@ impl NetworkController for NmcliNetworkController {
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let mut networks = Vec::new();
-
-        for line in stdout.lines() {
-            let parts: Vec<&str> = line.split(':').collect();
-            // Since MAC addresses contain colons, they get split too.
-            // Better to split from the right or just handle it knowing BSSID has 5 colons.
-            // Format: BSSID (6 parts), SSID, SIGNAL, SECURITY
-            if parts.len() >= 9 {
-                // Parts: 0..=5 is BSSID
-                // 6 is SSID
-                // 7 is SIGNAL
-                // 8 is SECURITY
-
-                let ssid = parts[6].replace("\\:", ":");
-                if ssid.is_empty() {
-                    continue;
-                }
-
-                let signal = parts[7].parse::<u8>().unwrap_or(0);
-                let security = parts[8..].join(":"); // in case security has colons
-
-                networks.push(WifiNetwork {
-                    ssid,
-                    signal_strength: signal,
-                    security,
-                });
-            }
-        }
-
-        // Deduplicate and sort by strength
-        networks.sort_by(|a, b| b.signal_strength.cmp(&a.signal_strength));
-        networks.dedup_by(|a, b| a.ssid == b.ssid);
-
-        Ok(networks)
+        Ok(parse_scan_output(&stdout))
     }
 
     async fn get_saved_networks(&self) -> NetResult<Vec<SavedNetwork>> {
@@ -98,19 +141,7 @@ impl NetworkController for NmcliNetworkController {
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let mut saved = Vec::new();
-
-        for line in stdout.lines() {
-            let parts: Vec<&str> = line.split(':').collect();
-            if parts.len() >= 3 && parts[2] == "802-11-wireless" {
-                saved.push(SavedNetwork {
-                    id: parts[0].to_string(),
-                    ssid: parts[1].replace("\\:", ":"),
-                });
-            }
-        }
-
-        Ok(saved)
+        Ok(parse_saved_output(&stdout))
     }
 
     async fn connect(&self, ssid: &str, password: &str) -> NetResult<Uuid> {
@@ -124,7 +155,6 @@ impl NetworkController for NmcliNetworkController {
         let ssid = ssid.to_string();
         let password = password.to_string();
 
-        // Spawn nmcli in background so we can return the test_id immediately
         tokio::spawn(async move {
             let mut cmd = Command::new("nmcli");
             cmd.args(&["dev", "wifi", "connect", &ssid]);
@@ -184,5 +214,53 @@ impl NetworkController for NmcliNetworkController {
 
         info!("Forgot network with ID {}", id);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    #[test]
+    fn test_parse_nmcli_terse_line() {
+        assert_eq!(
+            parse_nmcli_terse_line(r"00\:11\:22\:33\:44\:55:My\:Network:100:WPA2"),
+            vec!["00:11:22:33:44:55", "My:Network", "100", "WPA2"]
+        );
+        assert_eq!(
+            parse_nmcli_terse_line(r"uuid-1234:Name with \: colon:802-11-wireless"),
+            vec!["uuid-1234", "Name with : colon", "802-11-wireless"]
+        );
+    }
+
+    proptest! {
+        #[test]
+        fn doesnt_panic_on_scan_output(s in "\\PC*") {
+            let _ = parse_scan_output(&s);
+        }
+
+        #[test]
+        fn doesnt_panic_on_saved_output(s in "\\PC*") {
+            let _ = parse_saved_output(&s);
+        }
+
+        #[test]
+        fn parses_valid_scan_output(
+            bssid in "[0-9A-F]{2}(\\\\:[0-9A-F]{2}){5}",
+            ssid in "[a-zA-Z0-9]+",
+            signal in 0u8..=100,
+            security in "(WPA2|WPA3|NONE)"
+        ) {
+            let input = format!("{}:{}:{}:{}", bssid, ssid, signal, security);
+            let parsed = parse_scan_output(&input);
+            
+            // Note: because we deduplicate by SSID in parse_scan_output, and we only generated 1 network, 
+            // the length should be 1.
+            prop_assert_eq!(parsed.len(), 1);
+            prop_assert_eq!(&parsed[0].ssid, &ssid);
+            prop_assert_eq!(parsed[0].signal_strength, signal);
+            prop_assert_eq!(&parsed[0].security, &security);
+        }
     }
 }
