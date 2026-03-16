@@ -1,6 +1,8 @@
 <script lang="ts">
   import { NetworkState } from '$lib/network.svelte';
   import { onMount } from 'svelte';
+  import { onDestroy } from "svelte";
+
   
   import { Button } from '$lib/components/ui/button/index.js';
   import { Input } from '$lib/components/ui/input/index.js';
@@ -24,6 +26,12 @@
   const networkState = new NetworkState();
 
   onMount(() => {
+    networkState.startConnectivityPolling();
+  });
+
+  onDestroy(() => {
+    networkState.stopConnectivityPolling();
+
     networkState.loadNetworks();
   });
 
@@ -48,6 +56,23 @@
   <div class="mb-8">
     <h1 class="text-3xl font-bold tracking-tight mb-2">Network Settings</h1>
     <p class="text-muted-foreground">Connect to a Wi-Fi network.</p>
+  </div>
+
+  {#if networkState.connectivity}
+    <div class="mb-6 flex items-center justify-between p-4 bg-card rounded-lg border">
+      <div class="flex items-center gap-3">
+        {#if networkState.connectivity.is_connected}
+          <div class="h-3 w-3 rounded-full bg-green-500"></div>
+          <span class="font-medium text-green-700 dark:text-green-400">Internet Connected</span>
+        {:else}
+          <div class="h-3 w-3 rounded-full bg-destructive"></div>
+          <span class="font-medium text-destructive">No Internet Access</span>
+        {/if}
+      </div>
+    </div>
+  {/if}
+  <div>
+
   </div>
 
   {#if networkState.error}

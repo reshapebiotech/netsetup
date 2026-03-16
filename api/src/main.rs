@@ -10,7 +10,7 @@ use tower_http::services::{ServeDir, ServeFile};
 use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-use crate::api::wifi::AppState;
+use crate::api::network::AppState;
 use crate::dns::CaptivePortalDns;
 use crate::network::NetworkController;
 
@@ -78,7 +78,7 @@ async fn main() {
 
     // Build our application with routes
     let app = Router::new()
-        .nest("/api/wifi", api::wifi::router())
+        .nest("/api/network", api::network::router())
         .fallback_service(serve_dir)
         .with_state(state);
 

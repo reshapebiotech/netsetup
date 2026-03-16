@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
-    use testcontainers::{core::WaitFor, runners::AsyncRunner, GenericImage};
+    use testcontainers::{core::WaitFor, runners::AsyncRunner, GenericImage, ImageExt};
     use testcontainers::core::{IntoContainerPort, ExecCommand};
 
     #[tokio::test]

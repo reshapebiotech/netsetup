@@ -1,128 +1,144 @@
+use crate::network::types::{
+    ConnectionState, AccessPointStatus, Connectivity, EthernetNetwork, NetworkSettings, SavedNetwork, WifiNetwork,
+};
+use crate::network::{NetworkController, NetworkError, Result as NetResult};
 use async_trait::async_trait;
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::RwLock;
-use tokio::time::sleep;
+use tokio::sync::Mutex;
 use uuid::Uuid;
 
-use super::types::{ConnectionState, SavedNetwork, WifiNetwork};
-use super::{NetworkController, NetworkError, Result};
-
-#[derive(Default)]
-struct MockState {
-    saved_networks: VecDeque<SavedNetwork>,
-    active_tests: HashMap<Uuid, ConnectionState>,
-}
-
-#[derive(Clone)]
 pub struct MockNetworkController {
-    state: Arc<RwLock<MockState>>,
+    active_tests: Arc<Mutex<HashMap<Uuid, ConnectionState>>>,
 }
 
 impl MockNetworkController {
     pub fn new() -> Self {
-        let mut state = MockState::default();
-        state.saved_networks.push_back(SavedNetwork {
-            id: "managed-wifi-1".to_string(),
-            ssid: "Home_Network".to_string(),
-        });
-
         Self {
-            state: Arc::new(RwLock::new(state)),
+            active_tests: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 }
 
 #[async_trait]
 impl NetworkController for MockNetworkController {
-    async fn scan_wifi(&self) -> Result<Vec<WifiNetwork>> {
-        // Simulate scanning delay
-        sleep(Duration::from_millis(800)).await;
-
+    async fn scan_wifi(&self) -> NetResult<Vec<WifiNetwork>> {
         Ok(vec![
             WifiNetwork {
-                ssid: "Home_Network".to_string(),
+                ssid: "Home_Network".into(),
                 signal_strength: 85,
-                security: "WPA2".to_string(),
+                security: "WPA2".into(),
             },
             WifiNetwork {
-                ssid: "CoffeeShop_Guest".to_string(),
+                ssid: "CoffeeShop_Guest".into(),
                 signal_strength: 60,
-                security: "None".to_string(),
+                security: "None".into(),
             },
             WifiNetwork {
-                ssid: "Neighbor_5G".to_string(),
+                ssid: "Neighbor_5G".into(),
                 signal_strength: 30,
-                security: "WPA3".to_string(),
+                security: "WPA3".into(),
+            },
+            WifiNetwork {
+                ssid: "Enterprise_Corp".into(),
+                signal_strength: 90,
+                security: "802-1x".into(),
             },
         ])
     }
 
-    async fn get_saved_networks(&self) -> Result<Vec<SavedNetwork>> {
-        let state = self.state.read().await;
-        Ok(state.saved_networks.iter().cloned().collect())
+    async fn scan_ethernet(&self) -> NetResult<Vec<EthernetNetwork>> {
+        Ok(vec![EthernetNetwork {
+            interface: "eth0".into(),
+            connected: true,
+        }])
     }
 
-    async fn connect(&self, ssid: &str, password: &str) -> Result<Uuid> {
+    async fn get_saved_networks(&self) -> NetResult<Vec<SavedNetwork>> {
+        Ok(vec![SavedNetwork {
+            id: "managed-wifi-1".into(),
+            ssid: "Home_Network".into(),
+        }])
+    }
+
+    async fn connect_wifi(&self, settings: NetworkSettings) -> NetResult<Uuid> {
         let test_id = Uuid::new_v4();
 
-        // Immediately record that a test is active
-        {
-            let mut state = self.state.write().await;
-            state.active_tests.insert(test_id, ConnectionState::Testing);
-        }
+        let mut tests = self.active_tests.lock().await;
+        tests.insert(test_id, ConnectionState::Testing);
+        drop(tests);
 
-        // Spawn a background task to simulate the connection process
-        let state_clone = self.state.clone();
-        let ssid_clone = ssid.to_string();
-        let password_clone = password.to_string();
-
+        let active_tests = self.active_tests.clone();
+        
         tokio::spawn(async move {
-            // Simulate the "connectivity chasm"
-            sleep(Duration::from_secs(5)).await;
+            tokio::time::sleep(Duration::from_secs(3)).await;
+            let mut tests = active_tests.lock().await;
+            
+            // Mock logic: success if password is "password" or eap_password is "enterprise"
+            let pwd = settings.password.unwrap_or_default();
+            let eap_pwd = settings.eap_password.unwrap_or_default();
 
-            let final_state = if password_clone == "password" || password_clone.is_empty() {
-                // Success: Add to saved networks (FIFO)
-                let mut state = state_clone.write().await;
-
-                if state.saved_networks.len() >= 2 {
-                    state.saved_networks.pop_front();
-                }
-
-                // For mock, just use a random ID or next sequential
-                let next_id = format!("managed-wifi-{}", Uuid::new_v4().simple());
-                state.saved_networks.push_back(SavedNetwork {
-                    id: next_id,
-                    ssid: ssid_clone,
-                });
-
-                ConnectionState::Connected
+            if pwd == "password" || eap_pwd == "enterprise" || settings.ssid.unwrap_or_default() == "CoffeeShop_Guest" {
+                tests.insert(test_id, ConnectionState::Connected);
             } else {
-                // Failure
-                ConnectionState::Failed("Incorrect password or network out of range".to_string())
-            };
-
-            // Update the test result
-            let mut state = state_clone.write().await;
-            state.active_tests.insert(test_id, final_state);
+                tests.insert(
+                    test_id,
+                    ConnectionState::Failed("Incorrect password or network out of range".into()),
+                );
+            }
         });
 
         Ok(test_id)
     }
 
-    async fn connection_status(&self, test_id: Uuid) -> Result<ConnectionState> {
-        let state = self.state.read().await;
-        state
-            .active_tests
-            .get(&test_id)
-            .cloned()
-            .ok_or_else(|| NetworkError::NotFound("Test ID not found".to_string()))
+    async fn connect_ethernet(&self, _settings: NetworkSettings) -> NetResult<Uuid> {
+        let test_id = Uuid::new_v4();
+        let mut tests = self.active_tests.lock().await;
+        tests.insert(test_id, ConnectionState::Testing);
+        drop(tests);
+
+        let active_tests = self.active_tests.clone();
+        
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(2)).await;
+            let mut tests = active_tests.lock().await;
+            tests.insert(test_id, ConnectionState::Connected);
+        });
+
+        Ok(test_id)
     }
 
-    async fn forget_network(&self, id: &str) -> Result<()> {
-        let mut state = self.state.write().await;
-        state.saved_networks.retain(|net| net.id != id);
+    async fn connection_status(&self, test_id: Uuid) -> NetResult<ConnectionState> {
+        let tests = self.active_tests.lock().await;
+        if let Some(state) = tests.get(&test_id) {
+            Ok(state.clone())
+        } else {
+            Err(NetworkError::NotFound("Test ID not found".into()))
+        }
+    }
+
+    async fn forget_network(&self, id: &str) -> NetResult<()> {
+        tracing::info!("Mock forgetting network {}", id);
         Ok(())
+    }
+
+    async fn get_hotspot_status(&self) -> NetResult<AccessPointStatus> {
+        Ok(AccessPointStatus { is_enabled: false })
+    }
+
+    async fn start_hotspot(&self, _ssid: &str, _password: &str) -> NetResult<()> {
+        Ok(())
+    }
+
+    async fn stop_hotspot(&self, _ssid: &str) -> NetResult<()> {
+        Ok(())
+    }
+
+    async fn get_connectivity(&self) -> NetResult<Connectivity> {
+        Ok(Connectivity {
+            is_connected: true,
+            can_reach_host: true,
+        })
     }
 }

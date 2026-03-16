@@ -66,7 +66,7 @@ async fn test_nmcli_in_docker() {
         .args(&[
             "exec",
             &container_id,
-            "curl", "-s", "http://127.0.0.1:3000/api/wifi/saved"
+            "curl", "-s", "http://127.0.0.1:3000/api/network/saved"
         ])
         .output()
         .expect("Failed to query API");

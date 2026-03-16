@@ -1,4 +1,4 @@
-import { scanWifi, getSavedNetworks, connectWifi, checkConnectionStatus, forgetNetwork, type WifiNetwork, type SavedNetwork, type ConnectionState } from './api';
+import { scanWifi, getSavedNetworks, connectWifi, checkConnectionStatus, forgetNetwork, checkConnectivity, type WifiNetwork, type SavedNetwork, type Connectivity } from './api';
 
 export type MachineState = 
     | { type: 'idle' }
@@ -11,20 +11,42 @@ export type MachineState =
 export class NetworkState {
     available = $state<WifiNetwork[]>([]);
     saved = $state<SavedNetwork[]>([]);
+    connectivity = $state<Connectivity | null>(null);
     loading = $state(false);
     error = $state<string | null>(null);
     machine = $state<MachineState>({ type: 'idle' });
+
+    private connectivityTimer: ReturnType<typeof setInterval> | null = null;
+
+    startConnectivityPolling() {
+        this.pollConnectivity();
+        this.connectivityTimer = setInterval(() => this.pollConnectivity(), 5000);
+    }
+
+    stopConnectivityPolling() {
+        if (this.connectivityTimer) clearInterval(this.connectivityTimer);
+    }
+
+    private async pollConnectivity() {
+        try {
+            this.connectivity = await checkConnectivity();
+        } catch (e) {
+            // Ignore temporary failures
+        }
+    }
 
     async loadNetworks() {
         this.loading = true;
         this.error = null;
         try {
-            const [scanned, saved] = await Promise.all([
+            const [scanned, saved, conn] = await Promise.all([
                 scanWifi(),
-                getSavedNetworks()
+                getSavedNetworks(),
+                checkConnectivity().catch(() => null)
             ]);
             this.available = scanned;
             this.saved = saved;
+            if (conn) this.connectivity = conn;
         } catch (e: any) {
             this.error = e.message || 'Failed to load networks';
         } finally {
@@ -71,15 +93,11 @@ export class NetworkState {
                     return;
                 }
                 
-                // If it's still 'Testing', we just wait and poll again.
-                // But if we previously thought it was disconnected (AP dropped), 
-                // and now we got a response, we should transition back to testing
                 if (this.machine.type === 'disconnected') {
                     this.machine = { type: 'testing', ssid, testId };
                 }
 
             } catch (e: any) {
-                // Network error - this is EXPECTED! The AP just dropped.
                 this.machine = { type: 'disconnected', ssid, testId };
             }
 
