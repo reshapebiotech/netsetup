@@ -1,16 +1,16 @@
 use axum::{
+    Json, Router,
     extract::{Path, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{delete, get, post},
-    Json, Router,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::network::{NetworkController, NetworkError};
 use crate::network::types::{ConnectionState, SavedNetwork, WifiNetwork};
+use crate::network::{NetworkController, NetworkError};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -21,9 +21,9 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/scan", get(scan))
         .route("/saved", get(get_saved))
-        .route("/saved/:id", delete(forget_saved))
+        .route("/saved/{id}", delete(forget_saved))
         .route("/connect", post(connect))
-        .route("/status/:test_id", get(status))
+        .route("/status/{test_id}", get(status))
 }
 
 // Map domain errors to HTTP errors
@@ -44,16 +44,12 @@ impl IntoResponse for NetworkError {
     }
 }
 
-async fn scan(
-    State(state): State<AppState>,
-) -> Result<Json<Vec<WifiNetwork>>, NetworkError> {
+async fn scan(State(state): State<AppState>) -> Result<Json<Vec<WifiNetwork>>, NetworkError> {
     let networks = state.network.scan_wifi().await?;
     Ok(Json(networks))
 }
 
-async fn get_saved(
-    State(state): State<AppState>,
-) -> Result<Json<Vec<SavedNetwork>>, NetworkError> {
+async fn get_saved(State(state): State<AppState>) -> Result<Json<Vec<SavedNetwork>>, NetworkError> {
     let saved = state.network.get_saved_networks().await?;
     Ok(Json(saved))
 }
@@ -83,7 +79,7 @@ async fn connect(
 ) -> Result<(StatusCode, Json<ConnectResponse>), NetworkError> {
     let pwd = payload.password.unwrap_or_default();
     let test_id = state.network.connect(&payload.ssid, &pwd).await?;
-    
+
     Ok((StatusCode::ACCEPTED, Json(ConnectResponse { test_id })))
 }
 

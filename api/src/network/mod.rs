@@ -25,17 +25,19 @@ pub type Result<T> = std::result::Result<T, NetworkError>;
 pub trait NetworkController: Send + Sync {
     /// Scan for available Wi-Fi networks
     async fn scan_wifi(&self) -> Result<Vec<WifiNetwork>>;
-    
+
     /// Returns up to 2 saved network profiles
     async fn get_saved_networks(&self) -> Result<Vec<SavedNetwork>>;
-    
+
     /// Starts a connection attempt to a given SSID.
     /// Returns a UUID representing this connection test.
     async fn connect(&self, ssid: &str, password: &str) -> Result<Uuid>;
-    
+
     /// Polls the status of an ongoing connection test
     async fn connection_status(&self, test_id: Uuid) -> Result<ConnectionState>;
-    
+
     /// Forgets a saved network by its internal ID (e.g. "managed-wifi-1")
     async fn forget_network(&self, id: &str) -> Result<()>;
 }
+pub mod dbus;
+pub mod nm_dbus;
