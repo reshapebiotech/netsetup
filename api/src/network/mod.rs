@@ -1,4 +1,5 @@
 pub mod mock;
+pub mod nmcli;
 pub mod types;
 
 use async_trait::async_trait;
@@ -39,5 +40,3 @@ pub trait NetworkController: Send + Sync {
     /// Forgets a saved network by its internal ID (e.g. "managed-wifi-1")
     async fn forget_network(&self, id: &str) -> Result<()>;
 }
-pub mod dbus;
-pub mod nm_dbus;

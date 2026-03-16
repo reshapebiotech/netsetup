@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  machine-setup:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # Privileged is necessary for NetworkManager to talk to kernel networking
+    privileged: true
+    network_mode: host
+    environment:
+      - RUST_LOG=api=debug,tower_http=debug
+      - MOCK_NETWORK=0 # Use 1 to use MockNetworkController
+    # To test actual wifi, you can map in kernel modules, 
+    # but out of the box this will let you test the API and nmcli interaction.
+    # volumes:
+    #   - /sys/fs/cgroup:/sys/fs/cgroup:ro
