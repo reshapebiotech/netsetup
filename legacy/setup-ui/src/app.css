@@ -1,0 +1,108 @@
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+
+@layer base {
+  @font-face {
+    font-family: 'Geist Mono';
+    font-style: normal;
+    font-weight: 400;
+    src: url('/fonts/GeistMono-VariableFont_wght.ttf') format('truetype');
+  }
+  @font-face {
+    font-family: 'af Another Sans';
+    font-style: normal;
+    font-weight: 400;
+    src: url('/fonts/afAnotherSans-Regular.woff2') format('woff2');
+  }
+  @font-face {
+    font-family: 'af Another Sans';
+    font-style: normal;
+    font-weight: 500;
+    src: url('/fonts/afAnotherSans-Medium.woff2') format('woff2');
+  }
+  @font-face {
+    font-family: 'af Another Sans';
+    font-style: normal;
+    font-weight: 600;
+    src: url('/fonts/afAnotherSans-SemiBold.woff2') format('woff2');
+  }
+
+  body {
+    background-color: theme('colors.background.500');
+    color: theme('colors.dark.500');
+    font-family: 'af Another Sans', sans-serif;
+    font-style: normal;
+    font-feature-settings: 'ss01' on;
+    font-variant-numeric: lining-nums tabular-nums;
+    font-weight: 400;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    letter-spacing: 0.01em;
+  }
+
+  a {
+    color: theme('colors.primary.500');
+    font-style: normal;
+  }
+  a:hover {
+    text-decoration: underline;
+  }
+
+  strong {
+    font-weight: 600;
+  }
+
+  h1 {
+    /* text-7xl */
+    font-size: 4.5rem;
+    font-style: normal;
+    font-weight: 600;
+    line-height: 4.5rem;
+    letter-spacing: -0.1em;
+  }
+
+  h2 {
+    /* text-3xl */
+    font-size: 1.875rem;
+    font-style: normal;
+    font-weight: 600;
+    letter-spacing: -0.025em;
+  }
+
+  h3 {
+    /* text-2xl */
+    font-size: 1.5rem;
+    font-style: normal;
+    font-weight: 600;
+    line-height: 1.75rem;
+    letter-spacing: -0.025em;
+  }
+
+  h4 {
+    /* text-xl */
+    font-size: 1.25rem;
+    line-height: 1.75rem;
+    font-style: normal;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  h5 {
+    /* text-base */
+    font-size: 1rem;
+    line-height: 1.5rem;
+    font-style: normal;
+    font-weight: 600;
+    letter-spacing: 0;
+  }
+
+  h6 {
+    /* text-sm */
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    font-style: normal;
+    font-weight: 600;
+    letter-spacing: 0;
+  }
+}

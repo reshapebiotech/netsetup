@@ -1,0 +1,448 @@
+{
+  "openapi": "3.1.0",
+  "info": { "title": "FastAPI", "version": "0.1.0" },
+  "paths": {
+    "/state": {
+      "get": {
+        "summary": "Get State",
+        "operationId": "get_state_state_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/State-Output" } }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Set State",
+        "operationId": "set_state_state_post",
+        "requestBody": {
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/State-Input" } }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/State-Output" } }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/wireless-networks": {
+      "get": {
+        "summary": "Available Wireless Networks",
+        "operationId": "available_wireless_networks_wireless_networks_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Networks" } }
+            }
+          }
+        }
+      }
+    },
+    "/wired-networks": {
+      "get": {
+        "summary": "Available Wired Networks",
+        "operationId": "available_wired_networks_wired_networks_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Networks" } }
+            }
+          }
+        }
+      }
+    },
+    "/wireless-settings": {
+      "post": {
+        "summary": "Set Wireless Settings",
+        "operationId": "set_wireless_settings_wireless_settings_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/NetworkSettings-Input" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ConnectionAttempt-Output" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ethernet-settings": {
+      "post": {
+        "summary": "Ethernet Settings",
+        "operationId": "ethernet_settings_ethernet_settings_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/NetworkSettings-Input" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ConnectionAttempt-Output" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/network-settings": {
+      "get": {
+        "summary": "Get Network Settings",
+        "operationId": "get_network_settings_network_settings_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/AllSettings" } }
+            }
+          }
+        }
+      }
+    },
+    "/network-settings/{id}": {
+      "delete": {
+        "summary": "Delete Connection Settings",
+        "operationId": "delete_connection_settings_network_settings__id__delete",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string",
+                  "title": "Response Delete Connection Settings Network Settings  Id  Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connectivity": {
+      "get": {
+        "summary": "Connectivity",
+        "operationId": "connectivity_connectivity_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          }
+        }
+      }
+    },
+    "/": {
+      "get": {
+        "summary": "Root",
+        "operationId": "root__get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": { "schema": { "type": "string", "title": "Response Root  Get" } }
+            }
+          }
+        }
+      }
+    },
+    "/access_point": {
+      "get": {
+        "summary": "Get Access Point Status",
+        "operationId": "get_access_point_status_access_point_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/AccessPointStatus" } }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AccessPointStatus": {
+        "properties": { "is_enabled": { "type": "boolean", "title": "Is Enabled" } },
+        "type": "object",
+        "required": ["is_enabled"],
+        "title": "AccessPointStatus"
+      },
+      "Address": {
+        "properties": {
+          "address": { "type": "string", "title": "Address" },
+          "prefix": { "type": "integer", "title": "Prefix" }
+        },
+        "type": "object",
+        "required": ["address", "prefix"],
+        "title": "Address"
+      },
+      "AllSettings": {
+        "properties": {
+          "settings": {
+            "items": { "$ref": "#/components/schemas/NetworkSettings-Output" },
+            "type": "array",
+            "title": "Settings"
+          },
+          "hardware_addresses": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Hardware Addresses"
+          }
+        },
+        "type": "object",
+        "required": ["settings", "hardware_addresses"],
+        "title": "AllSettings"
+      },
+      "ConnectionAttempt-Input": {
+        "properties": {
+          "settings": { "$ref": "#/components/schemas/NetworkSettings-Input" },
+          "connection_result_states": {
+            "items": {
+              "prefixItems": [{ "type": "string" }, { "type": "string" }],
+              "type": "array",
+              "maxItems": 2,
+              "minItems": 2
+            },
+            "type": "array",
+            "title": "Connection Result States"
+          }
+        },
+        "type": "object",
+        "required": ["settings", "connection_result_states"],
+        "title": "ConnectionAttempt"
+      },
+      "ConnectionAttempt-Output": {
+        "properties": {
+          "settings": { "$ref": "#/components/schemas/NetworkSettings-Output" },
+          "connection_result_states": {
+            "items": {
+              "prefixItems": [{ "type": "string" }, { "type": "string" }],
+              "type": "array",
+              "maxItems": 2,
+              "minItems": 2
+            },
+            "type": "array",
+            "title": "Connection Result States"
+          }
+        },
+        "type": "object",
+        "required": ["settings", "connection_result_states"],
+        "title": "ConnectionAttempt"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": { "$ref": "#/components/schemas/ValidationError" },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "IPConfig": {
+        "properties": {
+          "method": { "type": "string", "enum": ["auto", "manual"], "title": "Method" },
+          "address_data": {
+            "anyOf": [
+              { "items": { "$ref": "#/components/schemas/Address" }, "type": "array" },
+              { "type": "null" }
+            ],
+            "title": "Address Data"
+          },
+          "gateway": { "anyOf": [{ "type": "string" }, { "type": "null" }], "title": "Gateway" },
+          "dns": {
+            "anyOf": [{ "items": { "type": "string" }, "type": "array" }, { "type": "null" }],
+            "title": "Dns"
+          }
+        },
+        "type": "object",
+        "required": ["method"],
+        "title": "IPConfig"
+      },
+      "Network": {
+        "properties": {
+          "ssid": { "type": "string", "title": "Ssid" },
+          "security": {
+            "type": "string",
+            "enum": ["WPA1", "WPA2", "WPA3", "EAP", "None"],
+            "title": "Security"
+          },
+          "strength": { "type": "integer", "title": "Strength" }
+        },
+        "type": "object",
+        "required": ["ssid", "security", "strength"],
+        "title": "Network"
+      },
+      "NetworkSettings-Input": {
+        "properties": {
+          "ssid": { "anyOf": [{ "type": "string" }, { "type": "null" }], "title": "Ssid" },
+          "password": { "anyOf": [{ "type": "string" }, { "type": "null" }], "title": "Password" },
+          "id": { "anyOf": [{ "type": "string" }, { "type": "null" }], "title": "Id" },
+          "eap_login": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Eap Login"
+          },
+          "eap_password": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Eap Password"
+          },
+          "ipv4": { "anyOf": [{ "$ref": "#/components/schemas/IPConfig" }, { "type": "null" }] }
+        },
+        "type": "object",
+        "title": "NetworkSettings"
+      },
+      "NetworkSettings-Output": {
+        "properties": {
+          "ssid": { "anyOf": [{ "type": "string" }, { "type": "null" }], "title": "Ssid" },
+          "password": { "anyOf": [{ "type": "string" }, { "type": "null" }], "title": "Password" },
+          "id": { "anyOf": [{ "type": "string" }, { "type": "null" }], "title": "Id" },
+          "eap_login": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Eap Login"
+          },
+          "eap_password": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Eap Password"
+          },
+          "ipv4": { "anyOf": [{ "$ref": "#/components/schemas/IPConfig" }, { "type": "null" }] }
+        },
+        "type": "object",
+        "title": "NetworkSettings"
+      },
+      "Networks": {
+        "properties": {
+          "networks": {
+            "items": { "$ref": "#/components/schemas/Network" },
+            "type": "array",
+            "title": "Networks"
+          }
+        },
+        "type": "object",
+        "required": ["networks"],
+        "title": "Networks"
+      },
+      "State-Input": {
+        "properties": {
+          "state": { "type": "string", "title": "State" },
+          "wifi_settings": {
+            "anyOf": [
+              { "additionalProperties": { "type": "string" }, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Wifi Settings"
+          },
+          "connection_attempt": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/ConnectionAttempt-Input" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "type": "object",
+        "required": ["state"],
+        "title": "State"
+      },
+      "State-Output": {
+        "properties": {
+          "state": { "type": "string", "title": "State" },
+          "wifi_settings": {
+            "anyOf": [
+              { "additionalProperties": { "type": "string" }, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Wifi Settings"
+          },
+          "connection_attempt": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/ConnectionAttempt-Output" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "type": "object",
+        "required": ["state"],
+        "title": "State"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": { "anyOf": [{ "type": "string" }, { "type": "integer" }] },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": { "type": "string", "title": "Message" },
+          "type": { "type": "string", "title": "Error Type" }
+        },
+        "type": "object",
+        "required": ["loc", "msg", "type"],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

@@ -1,0 +1,53 @@
+name: Format
+
+on:
+  push:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  format-projects:
+    timeout-minutes: 5
+    name: Format projects
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ssh-key: ${{secrets.WRITE_KEY}}
+
+      - name: Install bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.11
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Format UI
+        run: bun install && bun run prettier --write .
+        working-directory: setup-ui
+
+      - name: Install required Python libraries
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: dbus libdbus-1-dev libglib2.0-dev
+
+      - name: Format API
+        run: uv run ruff format
+        working-directory: setup-api
+
+      - name: Add formatted files
+        uses: stefanzweifel/git-auto-commit-action@v5
