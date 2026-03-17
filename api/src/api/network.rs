@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 use crate::network::types::{
     AccessPointControllerStatus, AccessPointPreferences, AccessPointStatus, ConnectionState,
-    Connectivity, EthernetNetwork, NetworkSettings, SavedNetwork, WifiNetwork,
+    Connectivity, EthernetNetwork, NetworkMacAddresses, NetworkSettings, SavedNetwork, WifiNetwork,
 };
 use crate::network::{NetworkController, NetworkError};
 
@@ -34,6 +34,7 @@ pub fn router() -> Router<AppState> {
         .route("/ethernet/connect", post(connect_ethernet_compat))
         .route("/status/{test_id}", get(status))
         .route("/connectivity", get(get_connectivity))
+        .route("/mac_addresses", get(get_mac_addresses))
         .route("/access_point", get(get_hotspot_status))
         .route("/access_point/controller", get(get_ap_controller_status))
         .route(
@@ -158,6 +159,13 @@ async fn get_connectivity(
 ) -> Result<Json<Connectivity>, NetworkError> {
     let connectivity = state.network.get_connectivity().await?;
     Ok(Json(connectivity))
+}
+
+async fn get_mac_addresses(
+    State(state): State<AppState>,
+) -> Result<Json<NetworkMacAddresses>, NetworkError> {
+    let macs = state.network.get_network_mac_addresses().await?;
+    Ok(Json(macs))
 }
 
 async fn get_ap_controller_status(

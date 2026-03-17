@@ -56,10 +56,17 @@
   </header>
 
   <Card className="space-y-3">
-    <p class="text-sm text-muted-foreground">
-      The Raspberry Pi has one radio, so this page can briefly disconnect while we test {transport}.
-      Keep this tab open. We will continue automatically as soon as the device is reachable again.
-    </p>
+    {#if transport === 'wifi'}
+      <p class="text-sm text-muted-foreground">
+        The Raspberry Pi has one radio, so this page can briefly disconnect while we test Wi-Fi.
+        Keep this tab open. We will continue automatically as soon as the device is reachable again.
+      </p>
+    {:else}
+      <p class="text-sm text-muted-foreground">
+        We are testing Ethernet. This page should usually stay connected during the test.
+        After you save, setup Wi-Fi may turn off and this page can disconnect.
+      </p>
+    {/if}
 
     {#if waitingForApi}
       <Loading label="Reconnecting to your device…" />

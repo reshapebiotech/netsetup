@@ -59,3 +59,8 @@ export interface AccessPointControllerStatus {
   automation_paused: boolean;
   last_reason: string;
 }
+
+export interface NetworkMacAddresses {
+  wifi: string[];
+  ethernet: string[];
+}

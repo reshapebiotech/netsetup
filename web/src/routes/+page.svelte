@@ -11,11 +11,8 @@
   let saved: SavedNetwork[] = [];
   let loading = true;
   let error = '';
-  let apPersistent = false;
-  let apLoading = true;
-  let apSaving = false;
-  let apError = '';
-  let apSavedMessage = '';
+  let deletingId = '';
+  let deleteError = '';
 
   async function loadSaved() {
     loading = true;
@@ -29,37 +26,21 @@
     }
   }
 
-  async function loadApPreferences() {
-    apLoading = true;
-    apError = '';
-    apSavedMessage = '';
+  async function deleteSaved(id: string) {
+    deletingId = id;
+    deleteError = '';
     try {
-      const prefs = await networkApi.getApPreferences();
-      apPersistent = prefs.persistent_enabled;
+      await networkApi.forget(id);
+      await loadSaved();
     } catch (e) {
-      apError = e instanceof Error ? e.message : 'Failed to load device behavior';
+      deleteError = e instanceof Error ? e.message : 'Failed to delete saved network';
     } finally {
-      apLoading = false;
-    }
-  }
-
-  async function saveApPreferences() {
-    apSaving = true;
-    apError = '';
-    apSavedMessage = '';
-    try {
-      await networkApi.setApPreferences({ persistent_enabled: apPersistent });
-      apSavedMessage = apPersistent ? 'Persistent setup Wi-Fi is now on.' : 'Persistent setup Wi-Fi is now off.';
-    } catch (e) {
-      apError = e instanceof Error ? e.message : 'Failed to save device behavior';
-    } finally {
-      apSaving = false;
+      deletingId = '';
     }
   }
 
   onMount(() => {
     void loadSaved();
-    void loadApPreferences();
   });
 </script>
 
@@ -77,53 +58,35 @@
       <Loading label="Loading configured network…" />
     {:else if error}
       <Alert tone="error">{error}</Alert>
+    {:else if deleteError}
+      <Alert tone="error">{deleteError}</Alert>
     {:else if saved.length === 0}
       <Alert tone="info">No managed network is configured yet.</Alert>
     {:else}
       {#each saved as entry}
         <div class="rounded-md border border-border bg-white p-3">
-          <p class="text-sm font-semibold">{entry.display_name}</p>
-          <p class="text-xs uppercase tracking-wide text-muted-foreground">{entry.transport}</p>
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <p class="text-sm font-semibold">{entry.display_name}</p>
+              <p class="text-xs uppercase tracking-wide text-muted-foreground">{entry.transport}</p>
+            </div>
+            <Button
+              variant="destructive"
+              loading={deletingId === entry.id}
+              disabled={!!deletingId && deletingId !== entry.id}
+              onclick={() => deleteSaved(entry.id)}
+            >
+              Delete
+            </Button>
+          </div>
         </div>
       {/each}
     {/if}
   </Card>
 
-  <Card className="space-y-4">
-    <h2 class="text-lg font-semibold">Device behavior</h2>
-    <p class="text-sm text-muted-foreground">
-      Keep setup Wi-Fi available while Ethernet is connected. This setting is temporary and resets after restart.
-    </p>
-
-    {#if apLoading}
-      <Loading label="Loading device behavior…" />
-    {/if}
-
-    {#if apError}
-      <Alert tone="error">{apError}</Alert>
-    {/if}
-
-    {#if apSavedMessage}
-      <Alert tone="info">{apSavedMessage}</Alert>
-    {/if}
-
-    <label class="flex items-center gap-2 text-sm">
-      <input type="checkbox" bind:checked={apPersistent} class="rounded border-input" disabled={apLoading || apSaving} />
-      Keep setup Wi-Fi available in Ethernet mode
-    </label>
-
-    <div class="flex items-center gap-3">
-      <Button variant="secondary" onclick={saveApPreferences} loading={apSaving} disabled={apLoading}>
-        Save behavior
-      </Button>
-      <Button variant="secondary" onclick={loadApPreferences} loading={apLoading} disabled={apSaving}>
-        Reload
-      </Button>
-    </div>
-  </Card>
-
   <div class="flex items-center gap-3">
     <Button onclick={() => goto('/setup/new')}>Add new network</Button>
+    <Button variant="secondary" onclick={() => goto('/settings')}>Settings</Button>
     <Button variant="secondary" onclick={loadSaved} loading={loading}>Refresh</Button>
   </div>
 </div>

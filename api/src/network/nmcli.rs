@@ -1,13 +1,11 @@
 use crate::network::types::{
     AccessPointControllerStatus, AccessPointPreferences, AccessPointStatus, ConnectionState,
-    Connectivity, EthernetNetwork, IpMethod, NetworkSettings, NetworkTransport, SavedNetwork,
-    WifiNetwork,
+    Connectivity, EthernetNetwork, IpMethod, NetworkMacAddresses, NetworkSettings,
+    NetworkTransport, SavedNetwork, WifiNetwork,
 };
 use crate::network::{NetworkController, NetworkError, Result as NetResult};
 use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::fs;
@@ -32,10 +30,8 @@ struct ApSupervisorState {
     last_reason: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct StoredManagedConnections {
-    ids: Vec<String>,
-}
+const MANAGED_WIFI_PROFILE: &str = "reshape-managed-wifi";
+const MANAGED_ETH_PROFILE: &str = "reshape-managed-ethernet";
 
 pub struct NmcliNetworkController {
     active_tests: Arc<Mutex<HashMap<Uuid, TestRecord>>>,
@@ -43,20 +39,11 @@ pub struct NmcliNetworkController {
     supervisor_started: Arc<AtomicBool>,
     hotspot_name: String,
     hotspot_password: String,
-    managed_connections_path: PathBuf,
-    managed_connection_ids: Arc<Mutex<HashSet<String>>>,
     probe_host: String,
 }
 
 impl NmcliNetworkController {
     pub fn new() -> Self {
-        let managed_connections_path = std::env::var("MANAGED_CONNECTIONS_PATH")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| PathBuf::from("/var/lib/machine-setup/managed-connections.json"));
-
-        let managed_ids =
-            Self::read_managed_connections_sync(&managed_connections_path).unwrap_or_default();
-
         Self {
             active_tests: Arc::new(Mutex::new(HashMap::new())),
             ap_state: Arc::new(Mutex::new(ApSupervisorState {
@@ -69,8 +56,6 @@ impl NmcliNetworkController {
             hotspot_name: Self::resolve_hotspot_name(),
             hotspot_password: std::env::var("DEVICE_AP_PASSWORD")
                 .unwrap_or_else(|_| "reshape123".to_string()),
-            managed_connections_path,
-            managed_connection_ids: Arc::new(Mutex::new(managed_ids.into_iter().collect())),
             probe_host: std::env::var("CONNECTIVITY_PROBE_HOST")
                 .unwrap_or_else(|_| "1.1.1.1".to_string()),
         }
@@ -96,46 +81,12 @@ impl NmcliNetworkController {
         "reshape-device".to_string()
     }
 
-    fn read_managed_connections_sync(path: &Path) -> Option<Vec<String>> {
-        let raw = std::fs::read_to_string(path).ok()?;
-        let payload = serde_json::from_str::<StoredManagedConnections>(&raw).ok()?;
-        Some(payload.ids)
-    }
-
-    async fn persist_managed_connections(&self) -> NetResult<()> {
-        if let Some(parent) = self.managed_connections_path.parent() {
-            fs::create_dir_all(parent).await.map_err(|e| {
-                NetworkError::Internal(format!("Failed to create managed state dir: {e}"))
-            })?;
-        }
-
-        let ids = {
-            let guard = self.managed_connection_ids.lock().await;
-            let mut values: Vec<String> = guard.iter().cloned().collect();
-            values.sort();
-            values
-        };
-
-        let raw = serde_json::to_vec_pretty(&StoredManagedConnections { ids }).map_err(|e| {
-            NetworkError::Internal(format!("Failed to encode managed connections: {e}"))
-        })?;
-
-        fs::write(&self.managed_connections_path, raw)
-            .await
-            .map_err(|e| {
-                NetworkError::Internal(format!("Failed to persist managed connections: {e}"))
-            })?;
-
-        Ok(())
-    }
-
     async fn run_supervisor_tick(&self) {
-        let wifi_test_in_progress = {
+        let test_in_progress = {
             let tests = self.active_tests.lock().await;
-            tests.values().any(|record| {
-                record.transport == NetworkTransport::Wifi
-                    && record.state == ConnectionState::Testing
-            })
+            tests
+                .values()
+                .any(|record| record.state == ConnectionState::Testing)
         };
 
         let (persistent_enabled, save_in_progress) = {
@@ -143,10 +94,10 @@ impl NmcliNetworkController {
             (state.persistent_enabled, state.save_in_progress)
         };
 
-        if wifi_test_in_progress || save_in_progress {
+        if test_in_progress || save_in_progress {
             let mut state = self.ap_state.lock().await;
             state.automation_paused = true;
-            state.last_reason = "AP automation paused during Wi-Fi transition".into();
+            state.last_reason = "AP automation paused during connection transition".into();
             return;
         }
 
@@ -267,8 +218,6 @@ impl NmcliNetworkController {
             supervisor_started: self.supervisor_started.clone(),
             hotspot_name: self.hotspot_name.clone(),
             hotspot_password: self.hotspot_password.clone(),
-            managed_connections_path: self.managed_connections_path.clone(),
-            managed_connection_ids: self.managed_connection_ids.clone(),
             probe_host: self.probe_host.clone(),
         };
 
@@ -344,45 +293,26 @@ impl NmcliNetworkController {
         })
     }
 
-    async fn get_connection_uuid_by_name(&self, name: &str) -> NetResult<String> {
+    async fn get_connection_by_name(&self, name: &str) -> NetResult<Option<SavedNetwork>> {
         let output = Command::new("nmcli")
-            .args(["-t", "-f", "UUID", "connection", "show", name])
-            .output()
-            .await
-            .map_err(|e| NetworkError::Internal(e.to_string()))?;
-
-        if !output.status.success() {
-            return Err(NetworkError::Internal(
-                String::from_utf8_lossy(&output.stderr).to_string(),
-            ));
-        }
-
-        let uuid = String::from_utf8_lossy(&output.stdout)
-            .lines()
-            .next()
-            .unwrap_or_default()
-            .trim()
-            .to_string();
-
-        if uuid.is_empty() {
-            return Err(NetworkError::NotFound(format!(
-                "No connection UUID found for {name}"
-            )));
-        }
-
-        Ok(uuid)
-    }
-
-    async fn get_connection_by_uuid(&self, uuid: &str) -> NetResult<Option<SavedNetwork>> {
-        let output = Command::new("nmcli")
-            .args(["-t", "-f", "UUID,NAME,TYPE", "connection", "show", uuid])
+            .args([
+                "-g",
+                "connection.uuid,connection.id,connection.type",
+                "connection",
+                "show",
+                name,
+            ])
             .output()
             .await
             .map_err(|e| NetworkError::Internal(e.to_string()))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr).to_lowercase();
-            if stderr.contains("not found") || stderr.contains("unknown") {
+            if stderr.contains("not found")
+                || stderr.contains("unknown")
+                || stderr.contains("no such connection profile")
+                || stderr.contains("no such connection")
+            {
                 return Ok(None);
             }
             return Err(NetworkError::Internal(
@@ -390,8 +320,32 @@ impl NmcliNetworkController {
             ));
         }
 
-        let parsed = parse_saved_output(&String::from_utf8_lossy(&output.stdout));
-        Ok(parsed.into_iter().next())
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let mut lines = stdout
+            .lines()
+            .map(|line| line.trim().to_string())
+            .filter(|line| !line.is_empty());
+
+        let out_uuid = lines.next().unwrap_or_default();
+        let name = lines.next().unwrap_or_default();
+        let conn_type = lines.next().unwrap_or_default();
+
+        if out_uuid.is_empty() || name.is_empty() {
+            return Ok(None);
+        }
+
+        let transport = match conn_type.as_str() {
+            "802-11-wireless" => NetworkTransport::Wifi,
+            "802-3-ethernet" => NetworkTransport::Ethernet,
+            _ => return Ok(None),
+        };
+
+        Ok(Some(SavedNetwork {
+            id: out_uuid,
+            transport,
+            display_name: name,
+            managed: true,
+        }))
     }
 }
 
@@ -422,6 +376,22 @@ fn parse_nmcli_terse_line(line: &str) -> Vec<String> {
     fields
 }
 
+async fn is_physical_interface(device: &str) -> bool {
+    let sysfs_device_path = format!("/sys/class/net/{device}/device");
+    fs::metadata(sysfs_device_path).await.is_ok()
+}
+
+async fn read_interface_mac(device: &str) -> Option<String> {
+    let path = format!("/sys/class/net/{device}/address");
+    let raw = fs::read_to_string(path).await.ok()?;
+    let mac = raw.trim().to_uppercase();
+    if mac.is_empty() || mac == "00:00:00:00:00:00" {
+        None
+    } else {
+        Some(mac)
+    }
+}
+
 pub fn parse_scan_output(stdout: &str) -> Vec<WifiNetwork> {
     let mut networks = Vec::new();
 
@@ -449,31 +419,11 @@ pub fn parse_scan_output(stdout: &str) -> Vec<WifiNetwork> {
     networks
 }
 
-pub fn parse_saved_output(stdout: &str) -> Vec<SavedNetwork> {
-    let mut saved = Vec::new();
-
-    for line in stdout.lines() {
-        let fields = parse_nmcli_terse_line(line);
-        if fields.len() >= 3 {
-            let transport = match fields[2].as_str() {
-                "802-11-wireless" => NetworkTransport::Wifi,
-                "802-3-ethernet" => NetworkTransport::Ethernet,
-                _ => continue,
-            };
-
-            saved.push(SavedNetwork {
-                id: fields[0].clone(),
-                transport,
-                display_name: fields[1].clone(),
-                managed: true,
-            });
-        }
-    }
-
-    saved
-}
-
-fn build_nmcli_connection_args(settings: &NetworkSettings, is_wifi: bool) -> Vec<String> {
+fn build_nmcli_connection_args(
+    settings: &NetworkSettings,
+    is_wifi: bool,
+    connection_name: &str,
+) -> Vec<String> {
     let mut args = vec!["connection".to_string(), "add".to_string()];
 
     if is_wifi {
@@ -481,7 +431,7 @@ fn build_nmcli_connection_args(settings: &NetworkSettings, is_wifi: bool) -> Vec
         args.push("wifi".to_string());
         if let Some(ssid) = &settings.ssid {
             args.push("con-name".to_string());
-            args.push(ssid.clone());
+            args.push(connection_name.to_string());
             args.push("ssid".to_string());
             args.push(ssid.clone());
         }
@@ -489,7 +439,7 @@ fn build_nmcli_connection_args(settings: &NetworkSettings, is_wifi: bool) -> Vec
         args.push("type".to_string());
         args.push("ethernet".to_string());
         args.push("con-name".to_string());
-        args.push("Wired connection".to_string());
+        args.push(connection_name.to_string());
     }
 
     if let Some(eap_login) = &settings.eap_login {
@@ -572,7 +522,8 @@ async fn run_nmcli_test(settings: &NetworkSettings, transport: &NetworkTransport
                     .await;
             }
 
-            let args = build_nmcli_connection_args(settings, true);
+            let test_name = settings.ssid.as_deref().unwrap_or("wifi-test");
+            let args = build_nmcli_connection_args(settings, true, test_name);
             let add_out = Command::new("nmcli")
                 .args(args)
                 .output()
@@ -602,7 +553,7 @@ async fn run_nmcli_test(settings: &NetworkSettings, transport: &NetworkTransport
                 .output()
                 .await;
 
-            let args = build_nmcli_connection_args(settings, false);
+            let args = build_nmcli_connection_args(settings, false, "Wired connection");
             let add_out = Command::new("nmcli")
                 .args(args)
                 .output()
@@ -693,31 +644,13 @@ impl NetworkController for NmcliNetworkController {
 
     async fn get_saved_networks(&self) -> NetResult<Vec<SavedNetwork>> {
         self.ensure_supervisor_started().await;
-
-        let managed_ids = {
-            let guard = self.managed_connection_ids.lock().await;
-            guard.iter().cloned().collect::<Vec<_>>()
-        };
-
-        let mut stale = Vec::new();
         let mut saved = Vec::new();
 
-        for id in managed_ids {
-            match self.get_connection_by_uuid(&id).await {
-                Ok(Some(entry)) => saved.push(entry),
-                Ok(None) => stale.push(id),
-                Err(e) => return Err(e),
-            }
+        if let Some(entry) = self.get_connection_by_name(MANAGED_WIFI_PROFILE).await? {
+            saved.push(entry);
         }
-
-        if !stale.is_empty() {
-            {
-                let mut guard = self.managed_connection_ids.lock().await;
-                for id in stale {
-                    guard.remove(&id);
-                }
-            }
-            self.persist_managed_connections().await?;
+        if let Some(entry) = self.get_connection_by_name(MANAGED_ETH_PROFILE).await? {
+            saved.push(entry);
         }
 
         Ok(saved)
@@ -813,60 +746,92 @@ impl NetworkController for NmcliNetworkController {
             ));
         }
 
-        if record.transport == NetworkTransport::Wifi {
+        {
             let mut state = self.ap_state.lock().await;
             state.save_in_progress = true;
         }
 
-        let save_result = match record.transport {
+        let save_result: NetResult<()> = match record.transport {
             NetworkTransport::Wifi => {
                 let Some(ssid) = &record.settings.ssid else {
                     return Err(NetworkError::ConnectionFailed(
                         "Missing SSID for Wi-Fi test".into(),
                     ));
                 };
-                let output = Command::new("nmcli")
-                    .args(["connection", "up", ssid])
+                let _ = Command::new("nmcli")
+                    .args(["connection", "delete", MANAGED_WIFI_PROFILE])
+                    .output()
+                    .await;
+
+                let mut managed_settings = record.settings.clone();
+                managed_settings.ssid = Some(ssid.clone());
+
+                let args =
+                    build_nmcli_connection_args(&managed_settings, true, MANAGED_WIFI_PROFILE);
+                let add_out = Command::new("nmcli")
+                    .args(args)
                     .output()
                     .await
                     .map_err(|e| NetworkError::Internal(e.to_string()))?;
-                if !output.status.success() {
+                if !add_out.status.success() {
                     Err(NetworkError::ConnectionFailed(
-                        String::from_utf8_lossy(&output.stderr).to_string(),
+                        String::from_utf8_lossy(&add_out.stderr).to_string(),
                     ))
                 } else {
-                    Ok(ssid.clone())
+                    let up_out = Command::new("nmcli")
+                        .args(["connection", "up", MANAGED_WIFI_PROFILE])
+                        .output()
+                        .await
+                        .map_err(|e| NetworkError::Internal(e.to_string()))?;
+                    if !up_out.status.success() {
+                        Err(NetworkError::ConnectionFailed(
+                            String::from_utf8_lossy(&up_out.stderr).to_string(),
+                        ))
+                    } else {
+                        Ok(())
+                    }
                 }
             }
             NetworkTransport::Ethernet => {
-                let output = Command::new("nmcli")
-                    .args(["connection", "up", "Wired connection"])
+                let _ = Command::new("nmcli")
+                    .args(["connection", "delete", MANAGED_ETH_PROFILE])
+                    .output()
+                    .await;
+
+                let args =
+                    build_nmcli_connection_args(&record.settings, false, MANAGED_ETH_PROFILE);
+                let add_out = Command::new("nmcli")
+                    .args(args)
                     .output()
                     .await
                     .map_err(|e| NetworkError::Internal(e.to_string()))?;
-                if !output.status.success() {
+                if !add_out.status.success() {
                     Err(NetworkError::ConnectionFailed(
-                        String::from_utf8_lossy(&output.stderr).to_string(),
+                        String::from_utf8_lossy(&add_out.stderr).to_string(),
                     ))
                 } else {
-                    Ok("Wired connection".to_string())
+                    let up_out = Command::new("nmcli")
+                        .args(["connection", "up", MANAGED_ETH_PROFILE])
+                        .output()
+                        .await
+                        .map_err(|e| NetworkError::Internal(e.to_string()))?;
+                    if !up_out.status.success() {
+                        Err(NetworkError::ConnectionFailed(
+                            String::from_utf8_lossy(&up_out.stderr).to_string(),
+                        ))
+                    } else {
+                        Ok(())
+                    }
                 }
             }
         };
 
-        if record.transport == NetworkTransport::Wifi {
+        {
             let mut state = self.ap_state.lock().await;
             state.save_in_progress = false;
         }
 
-        let connection_name = save_result?;
-        let uuid = self.get_connection_uuid_by_name(&connection_name).await?;
-        {
-            let mut guard = self.managed_connection_ids.lock().await;
-            guard.insert(uuid);
-        }
-        self.persist_managed_connections().await?;
-        Ok(())
+        save_result
     }
 
     async fn discard_test(&self, test_id: Uuid) -> NetResult<()> {
@@ -892,12 +857,6 @@ impl NetworkController for NmcliNetworkController {
                 String::from_utf8_lossy(&output.stderr).to_string(),
             ));
         }
-
-        {
-            let mut guard = self.managed_connection_ids.lock().await;
-            guard.remove(id);
-        }
-        self.persist_managed_connections().await?;
 
         info!("Forgot network with ID {id}");
         Ok(())
@@ -1032,5 +991,54 @@ impl NetworkController for NmcliNetworkController {
     async fn start_ap_supervisor(&self) -> NetResult<()> {
         self.ensure_supervisor_started().await;
         Ok(())
+    }
+
+    async fn get_network_mac_addresses(&self) -> NetResult<NetworkMacAddresses> {
+        self.ensure_supervisor_started().await;
+        let output = Command::new("nmcli")
+            .args(["-t", "-f", "DEVICE,TYPE", "device", "status"])
+            .output()
+            .await
+            .map_err(|e| NetworkError::Internal(e.to_string()))?;
+
+        if !output.status.success() {
+            return Err(NetworkError::Internal(
+                String::from_utf8_lossy(&output.stderr).to_string(),
+            ));
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let mut wifi = Vec::new();
+        let mut ethernet = Vec::new();
+
+        for line in stdout.lines() {
+            let fields = parse_nmcli_terse_line(line);
+            if fields.len() < 2 {
+                continue;
+            }
+
+            let device = fields[0].trim();
+            let kind = fields[1].trim();
+            if device.is_empty() || !is_physical_interface(device).await {
+                continue;
+            }
+
+            let Some(mac) = read_interface_mac(device).await else {
+                continue;
+            };
+
+            if kind == "wifi" {
+                wifi.push(mac);
+            } else if kind == "ethernet" {
+                ethernet.push(mac);
+            }
+        }
+
+        wifi.sort();
+        wifi.dedup();
+        ethernet.sort();
+        ethernet.dedup();
+
+        Ok(NetworkMacAddresses { wifi, ethernet })
     }
 }

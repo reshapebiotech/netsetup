@@ -1,42 +1,27 @@
 set shell := ["bash", "-cu"]
 
-api-run:
-	MOCK_NETWORK=1 cargo run -p api
-
-api-run-real:
-	cargo run -p api
-
-web-dev:
-	cd web && bun run dev
-
 dev:
-	@echo "Run in two terminals:"
-	@echo "  just api-run"
-	@echo "  just web-dev"
+	@echo "Starting API (mock) on :3000 and web on :5173"
+	@trap 'kill 0' EXIT INT TERM; \
+	MOCK_NETWORK=1 cargo run -p api & \
+	cd web && bun run dev & \
+	wait
 
-dev-browser:
-	cd web && bunx playwright test --ui
-
-web-test:
-	cd web && bun run test
-
-web-test-unit:
+test:
 	cd web && bun run test:unit
-
-web-test-e2e:
-	cd web && bun run test:e2e
+	cargo test -p api --bin api
 
 check:
 	cd web && bun run check
 	cargo test -p api --bin api
 
-build-api:
-	cargo build -p api --release
+format:
+	cargo fmt
 
-run-api:
+run:
 	cd web && bun run build
 	MOCK_NETWORK=1 cargo run -p api
 
-build-linux-arm64:
+build-arm64:
 	cd web && bun run build
 	cargo zigbuild -p api --release --target aarch64-unknown-linux-gnu

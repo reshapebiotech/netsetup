@@ -1,6 +1,16 @@
 import { expect, test } from '@playwright/test';
 
 test('wifi test flow shows handoff copy', async ({ page }) => {
+  let savedNetworks: Array<{ id: string; transport: 'wifi' | 'ethernet'; display_name: string; managed: boolean }> = [];
+
+  await page.route('**/api/network/saved', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(savedNetworks)
+    });
+  });
+
   await page.route('**/api/network/wifi/scan', async (route) => {
     await route.fulfill({
       status: 200,
@@ -33,6 +43,14 @@ test('wifi test flow shows handoff copy', async ({ page }) => {
   });
 
   await page.route('**/api/network/tests/abc-123/save', async (route) => {
+    savedNetworks = [
+      {
+        id: 'reshape-managed-wifi-uuid',
+        transport: 'wifi',
+        display_name: 'reshape-managed-wifi',
+        managed: true
+      }
+    ];
     await route.fulfill({ status: 202, body: '' });
   });
 
@@ -52,4 +70,10 @@ test('wifi test flow shows handoff copy', async ({ page }) => {
 
   await expect(page.getByText('Applying your saved network')).toBeVisible();
   await expect(page.getByText('This is expected behavior: during save')).toBeVisible();
+  await page.getByRole('button', { name: 'Return home' }).click();
+
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByText('Configured network')).toBeVisible();
+  await expect(page.getByText('reshape-managed-wifi')).toBeVisible();
+  await expect(page.getByText('wifi', { exact: true })).toBeVisible();
 });

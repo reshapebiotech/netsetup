@@ -57,7 +57,7 @@
         If the page freezes or disconnects, you can close it safely. Setup is complete.
       </p>
       <p class="text-sm text-muted-foreground">
-        Next steps: join the same LAN as the device and continue from your normal machine management entrypoint.
+        Your device is now online and ready to use.
       </p>
       {#if status === 'saved'}
         <Button onclick={() => goto('/')}>Return home</Button>

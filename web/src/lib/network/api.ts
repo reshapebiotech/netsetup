@@ -1,5 +1,6 @@
 import type {
   AccessPointControllerStatus,
+  NetworkMacAddresses,
   AccessPointPreferences,
   ConnectionState,
   Connectivity,
@@ -68,6 +69,12 @@ export const networkApi = {
 
   async getConnectivity(): Promise<Connectivity> {
     const res = await withTimeout(api('/connectivity'));
+    await parseOrThrow(res);
+    return res.json();
+  },
+
+  async getMacAddresses(): Promise<NetworkMacAddresses> {
+    const res = await withTimeout(api('/mac_addresses'));
     await parseOrThrow(res);
     return res.json();
   },

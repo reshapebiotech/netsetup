@@ -1,0 +1,22 @@
+[Unit]
+Description=Reshape Network Setup Service
+After=network-online.target NetworkManager.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+Environment=RUST_LOG=info
+Environment=DNS_PORT=10053
+Environment=AP_IFACE=wlan0
+Environment=CAPTIVE_IP=10.42.0.1
+WorkingDirectory=/opt/network-setup
+ExecStartPre=/usr/local/bin/captive-portal-rules.sh up
+ExecStart=/opt/network-setup/network-setup
+ExecStopPost=/usr/local/bin/captive-portal-rules.sh down
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

@@ -90,3 +90,9 @@ pub struct AccessPointControllerStatus {
     pub automation_paused: bool,
     pub last_reason: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct NetworkMacAddresses {
+    pub wifi: Vec<String>,
+    pub ethernet: Vec<String>,
+}

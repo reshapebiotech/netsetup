@@ -77,3 +77,43 @@ Build web assets and cross-compile the API binary with `cargo-zigbuild`:
 ```sh
 just build-linux-arm64
 ```
+
+## Raspberry Pi Captive Portal Setup
+
+This repo includes production helpers for running as a captive portal service on Raspberry Pi:
+
+- `deploy/systemd/network-setup.service`
+- `deploy/scripts/captive-portal-rules.sh`
+- `deploy/scripts/install-rpi.sh`
+
+### What the rules do
+
+- Redirect DNS traffic from AP clients on `wlan0` to the app DNS port (`10053`)
+- Enable forwarding/NAT for AP clients
+- Automatically remove the rules when the service stops
+
+### Install on Pi
+
+1. Copy the built binary + repo deploy files to the Pi.
+2. Run:
+
+```sh
+./deploy/scripts/install-rpi.sh /path/to/network-setup-binary
+```
+
+If your binary is already at `./target/aarch64-unknown-linux-gnu/release/api`, the argument can be omitted.
+
+### Service configuration
+
+The default unit uses:
+
+- `AP_IFACE=wlan0`
+- `DNS_PORT=10053`
+- `CAPTIVE_IP=10.42.0.1`
+
+Adjust in `deploy/systemd/network-setup.service` if needed, then:
+
+```sh
+sudo systemctl daemon-reload
+sudo systemctl restart network-setup
+```

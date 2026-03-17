@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use crate::network::types::{
     AccessPointControllerStatus, AccessPointPreferences, AccessPointStatus, ConnectionState,
-    Connectivity, EthernetNetwork, NetworkSettings, SavedNetwork, WifiNetwork,
+    Connectivity, EthernetNetwork, NetworkMacAddresses, NetworkSettings, SavedNetwork, WifiNetwork,
 };
 
 #[derive(Error, Debug)]
@@ -78,4 +78,7 @@ pub trait NetworkController: Send + Sync {
 
     /// Starts AP supervisor loop.
     async fn start_ap_supervisor(&self) -> Result<()>;
+
+    /// Returns MAC addresses by network type.
+    async fn get_network_mac_addresses(&self) -> Result<NetworkMacAddresses>;
 }

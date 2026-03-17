@@ -1,6 +1,7 @@
 use crate::network::types::{
     AccessPointControllerStatus, AccessPointPreferences, AccessPointStatus, ConnectionState,
-    Connectivity, EthernetNetwork, NetworkSettings, NetworkTransport, SavedNetwork, WifiNetwork,
+    Connectivity, EthernetNetwork, NetworkMacAddresses, NetworkSettings, NetworkTransport,
+    SavedNetwork, WifiNetwork,
 };
 use crate::network::{NetworkController, NetworkError, Result as NetResult};
 use async_trait::async_trait;
@@ -233,5 +234,12 @@ impl NetworkController for MockNetworkController {
 
     async fn start_ap_supervisor(&self) -> NetResult<()> {
         Ok(())
+    }
+
+    async fn get_network_mac_addresses(&self) -> NetResult<NetworkMacAddresses> {
+        Ok(NetworkMacAddresses {
+            wifi: vec!["B8:27:EB:AA:BB:01".into()],
+            ethernet: vec!["B8:27:EB:AA:BB:02".into()],
+        })
     }
 }
