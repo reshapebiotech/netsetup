@@ -5,6 +5,7 @@
   import Card from '$lib/components/ui/card.svelte';
   import Button from '$lib/components/ui/button.svelte';
   import Alert from '$lib/components/ui/alert.svelte';
+  import Icon from '$lib/components/ui/icon.svelte';
   import { networkApi } from '$lib/network/api';
   import { branding } from '$lib/branding';
 
@@ -41,15 +42,24 @@
 <div class="space-y-6">
   <header class="space-y-2">
     <p class="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">Final handoff</p>
-    <h1 class="text-3xl font-bold">Applying your saved network</h1>
+    <h1 class="flex items-center gap-2 text-3xl font-bold">
+      <Icon name="save" className="h-6 w-6 text-primary" />
+      Applying your saved network
+    </h1>
   </header>
 
   <Card className="space-y-4">
     {#if status === 'error'}
       <Alert tone="error">{message}</Alert>
       <div class="flex items-center gap-3">
-        <Button onclick={saveNow}>Retry save</Button>
-        <Button variant="secondary" onclick={() => goto('/')}>Back to home</Button>
+        <Button onclick={saveNow}>
+          <span class="mr-2 inline-flex items-center"><Icon name="refresh" /></span>
+          Retry save
+        </Button>
+        <Button variant="secondary" onclick={() => goto('/')}>
+          <span class="mr-2 inline-flex items-center"><Icon name="home" /></span>
+          Back to home
+        </Button>
       </div>
     {:else}
       <Alert tone="info">{message}</Alert>
@@ -61,7 +71,10 @@
         {$branding.success_message}
       </p>
       {#if status === 'saved'}
-        <Button onclick={() => goto('/')}>Return home</Button>
+        <Button onclick={() => goto('/')}>
+          <span class="mr-2 inline-flex items-center"><Icon name="home" /></span>
+          Return home
+        </Button>
       {/if}
     {/if}
   </Card>

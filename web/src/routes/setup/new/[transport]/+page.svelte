@@ -7,6 +7,7 @@
   import Select from '$lib/components/ui/select.svelte';
   import Alert from '$lib/components/ui/alert.svelte';
   import Loading from '$lib/components/ui/loading.svelte';
+  import Icon from '$lib/components/ui/icon.svelte';
   import { networkApi } from '$lib/network/api';
   import type { NetworkSettings, Transport, WifiNetwork } from '$lib/network/types';
   import { buildSettingsFromForm } from '$lib/network/settings';
@@ -94,7 +95,10 @@
 <div class="space-y-6">
   <header class="space-y-2">
     <p class="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">New {transport} profile</p>
-    <h1 class="text-3xl font-bold">Configure and test</h1>
+    <h1 class="flex items-center gap-2 text-3xl font-bold">
+      <Icon name={transport === 'wifi' ? 'wifi' : 'ethernet'} className="h-6 w-6 text-primary" />
+      Configure and test
+    </h1>
   </header>
 
   {#if submitError}
@@ -104,8 +108,16 @@
   {#if transport === 'wifi'}
     <Card className="space-y-3">
       <div class="flex items-center justify-between gap-3">
-        <h2 class="text-lg font-semibold">Wi-Fi network</h2>
-        <Button variant="secondary" onclick={loadWifi} loading={wifiLoading}>Rescan</Button>
+        <h2 class="flex items-center gap-2 text-lg font-semibold">
+          <Icon name="wifi" className="h-5 w-5 text-primary" />
+          Wi-Fi network
+        </h2>
+        <Button variant="secondary" onclick={loadWifi} loading={wifiLoading}>
+          {#if !wifiLoading}
+            <span class="mr-2 inline-flex items-center"><Icon name="refresh" /></span>
+          {/if}
+          Rescan
+        </Button>
       </div>
 
       {#if wifiError}
@@ -156,6 +168,9 @@
               onclick={() => (showEapPassword = !showEapPassword)}
               disabled={submitting}
             >
+              <span class="mr-2 inline-flex items-center">
+                <Icon name={showEapPassword ? 'eye-off' : 'eye'} />
+              </span>
               {showEapPassword ? 'Hide' : 'Show'}
             </Button>
           </div>
@@ -170,6 +185,9 @@
               onclick={() => (showPassword = !showPassword)}
               disabled={submitting}
             >
+              <span class="mr-2 inline-flex items-center">
+                <Icon name={showPassword ? 'eye-off' : 'eye'} />
+              </span>
               {showPassword ? 'Hide' : 'Show'}
             </Button>
           </div>
@@ -179,7 +197,10 @@
   {/if}
 
   <Card className="space-y-3">
-    <h2 class="text-lg font-semibold">IPv4 and DNS</h2>
+    <h2 class="flex items-center gap-2 text-lg font-semibold">
+      <Icon name="network" className="h-5 w-5 text-primary" />
+      IPv4 and DNS
+    </h2>
 
     <label class="space-y-2 text-sm font-medium">
       IPv4 method
@@ -217,7 +238,15 @@
   {/if}
 
   <div class="flex items-center gap-3">
-    <Button onclick={startTest} loading={submitting}>{submitting ? 'Starting test…' : 'Test connection'}</Button>
-    <Button variant="secondary" onclick={() => goto('/')}>Cancel</Button>
+    <Button onclick={startTest} loading={submitting}>
+      {#if !submitting}
+        <span class="mr-2 inline-flex items-center"><Icon name="check" /></span>
+      {/if}
+      {submitting ? 'Starting test…' : 'Test connection'}
+    </Button>
+    <Button variant="secondary" onclick={() => goto('/')}>
+      <span class="mr-2 inline-flex items-center"><Icon name="back" /></span>
+      Cancel
+    </Button>
   </div>
 </div>

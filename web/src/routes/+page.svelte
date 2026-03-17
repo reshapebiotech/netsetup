@@ -5,6 +5,7 @@
   import Button from '$lib/components/ui/button.svelte';
   import Alert from '$lib/components/ui/alert.svelte';
   import Loading from '$lib/components/ui/loading.svelte';
+  import Icon from '$lib/components/ui/icon.svelte';
   import { networkApi } from '$lib/network/api';
   import { branding } from '$lib/branding';
   import type { SavedNetwork } from '$lib/network/types';
@@ -54,7 +55,10 @@
   </header>
 
   <Card className="space-y-4">
-    <h2 class="text-lg font-semibold">Configured network</h2>
+    <h2 class="flex items-center gap-2 text-lg font-semibold">
+      <Icon name="network" className="h-5 w-5 text-primary" />
+      Configured network
+    </h2>
 
     {#if loading}
       <Loading label="Loading configured network…" />
@@ -69,7 +73,10 @@
         <div class="rounded-md border border-border bg-white p-3">
           <div class="flex items-center justify-between gap-3">
             <div>
-              <p class="text-sm font-semibold">{entry.display_name}</p>
+              <p class="flex items-center gap-2 text-sm font-semibold">
+                <Icon name={entry.transport === 'wifi' ? 'wifi' : 'ethernet'} className="h-4 w-4 text-muted-foreground" />
+                {entry.display_name}
+              </p>
               <p class="text-xs uppercase tracking-wide text-muted-foreground">{entry.transport}</p>
             </div>
             <Button
@@ -88,13 +95,17 @@
 
   {#if $branding.help_links.length > 0}
     <Card className="space-y-3">
-      <h2 class="text-lg font-semibold">{$branding.help_title}</h2>
+      <h2 class="flex items-center gap-2 text-lg font-semibold">
+        <Icon name="help" className="h-5 w-5 text-primary" />
+        {$branding.help_title}
+      </h2>
       {#if $branding.help_text}
         <p class="text-sm text-muted-foreground">{$branding.help_text}</p>
       {/if}
       <div class="flex flex-wrap items-center gap-2">
         {#each $branding.help_links as link}
           <a class="rounded-md border border-border bg-white px-3 py-2 text-sm font-medium text-primary hover:bg-muted" href={link.url} target="_blank" rel="noreferrer">
+            <span class="mr-1 inline-flex items-center"><Icon name="link" className="h-4 w-4" /></span>
             {link.label}
           </a>
         {/each}
@@ -103,8 +114,19 @@
   {/if}
 
   <div class="flex items-center gap-3">
-    <Button onclick={() => goto('/setup/new')}>Add new network</Button>
-    <Button variant="secondary" onclick={() => goto('/settings')}>Settings</Button>
-    <Button variant="secondary" onclick={loadSaved} loading={loading}>Refresh</Button>
+    <Button onclick={() => goto('/setup/new')}>
+      <span class="mr-2 inline-flex items-center"><Icon name="plus" /></span>
+      Add new network
+    </Button>
+    <Button variant="secondary" onclick={() => goto('/settings')}>
+      <span class="mr-2 inline-flex items-center"><Icon name="settings" /></span>
+      Settings
+    </Button>
+    <Button variant="secondary" onclick={loadSaved} loading={loading}>
+      {#if !loading}
+        <span class="mr-2 inline-flex items-center"><Icon name="refresh" /></span>
+      {/if}
+      Refresh
+    </Button>
   </div>
 </div>

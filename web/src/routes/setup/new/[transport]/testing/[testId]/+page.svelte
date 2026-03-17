@@ -5,6 +5,7 @@
   import Card from '$lib/components/ui/card.svelte';
   import Alert from '$lib/components/ui/alert.svelte';
   import Loading from '$lib/components/ui/loading.svelte';
+  import Icon from '$lib/components/ui/icon.svelte';
   import { networkApi } from '$lib/network/api';
   import type { ConnectionState, Transport } from '$lib/network/types';
 
@@ -52,7 +53,10 @@
 <div class="space-y-6">
   <header class="space-y-2">
     <p class="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">Testing connection</p>
-    <h1 class="text-3xl font-bold">Hold tight while we switch networks</h1>
+    <h1 class="flex items-center gap-2 text-3xl font-bold">
+      <Icon name={transport === 'wifi' ? 'wifi' : 'ethernet'} className="h-6 w-6 text-primary" />
+      Hold tight while we switch networks
+    </h1>
   </header>
 
   <Card className="space-y-3">
@@ -80,7 +84,10 @@
       </Alert>
     {/if}
 
-    <p class="text-xs text-muted-foreground">Status checks: {pollCount}</p>
+    <p class="flex items-center gap-2 text-xs text-muted-foreground">
+      <Icon name="refresh" className="h-3 w-3" />
+      Status checks: {pollCount}
+    </p>
 
     <div class="h-2 w-full overflow-hidden rounded bg-muted">
       <div class="h-full w-1/2 animate-pulse bg-primary"></div>

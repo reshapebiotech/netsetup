@@ -2,6 +2,7 @@
   import { goto } from '$app/navigation';
   import Button from '$lib/components/ui/button.svelte';
   import Card from '$lib/components/ui/card.svelte';
+  import Icon from '$lib/components/ui/icon.svelte';
 </script>
 
 <div class="space-y-6">
@@ -12,15 +13,27 @@
 
   <div class="grid gap-4 sm:grid-cols-2">
     <Card className="space-y-3">
-      <h2 class="text-xl font-semibold">Wi-Fi</h2>
+      <h2 class="flex items-center gap-2 text-xl font-semibold">
+        <Icon name="wifi" className="h-5 w-5 text-primary" />
+        Wi-Fi
+      </h2>
       <p class="text-sm text-muted-foreground">Scan and test wireless networks, including enterprise credentials.</p>
-      <Button onclick={() => goto('/setup/new/wifi')}>Use Wi-Fi</Button>
+      <Button onclick={() => goto('/setup/new/wifi')}>
+        <span class="mr-2 inline-flex items-center"><Icon name="wifi" /></span>
+        Use Wi-Fi
+      </Button>
     </Card>
 
     <Card className="space-y-3">
-      <h2 class="text-xl font-semibold">Ethernet</h2>
+      <h2 class="flex items-center gap-2 text-xl font-semibold">
+        <Icon name="ethernet" className="h-5 w-5 text-primary" />
+        Ethernet
+      </h2>
       <p class="text-sm text-muted-foreground">Configure wired network with DHCP or manual IPv4 + DNS settings.</p>
-      <Button onclick={() => goto('/setup/new/ethernet')}>Use Ethernet</Button>
+      <Button onclick={() => goto('/setup/new/ethernet')}>
+        <span class="mr-2 inline-flex items-center"><Icon name="ethernet" /></span>
+        Use Ethernet
+      </Button>
     </Card>
   </div>
 </div>

@@ -5,6 +5,7 @@
   import Button from '$lib/components/ui/button.svelte';
   import Alert from '$lib/components/ui/alert.svelte';
   import Loading from '$lib/components/ui/loading.svelte';
+  import Icon from '$lib/components/ui/icon.svelte';
   import { networkApi } from '$lib/network/api';
   import { branding } from '$lib/branding';
   import type { NetworkMacAddresses } from '$lib/network/types';
@@ -67,11 +68,17 @@
 <div class="space-y-6">
   <header class="space-y-2">
     <p class="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">{$branding.product_name}</p>
-    <h1 class="text-3xl font-bold">Settings</h1>
+    <h1 class="flex items-center gap-2 text-3xl font-bold">
+      <Icon name="settings" className="h-6 w-6 text-primary" />
+      Settings
+    </h1>
   </header>
 
   <Card className="space-y-4">
-    <h2 class="text-lg font-semibold">Device behavior</h2>
+    <h2 class="flex items-center gap-2 text-lg font-semibold">
+      <Icon name="wifi" className="h-5 w-5 text-primary" />
+      Device behavior
+    </h2>
     <p class="text-sm text-muted-foreground">
       Keep setup Wi-Fi available while Ethernet is connected. This setting is temporary and resets after restart.
     </p>
@@ -95,16 +102,25 @@
 
     <div class="flex items-center gap-3">
       <Button variant="secondary" onclick={saveApPreferences} loading={apSaving} disabled={apLoading}>
+        {#if !apSaving}
+          <span class="mr-2 inline-flex items-center"><Icon name="save" /></span>
+        {/if}
         Save settings
       </Button>
       <Button variant="secondary" onclick={loadApPreferences} loading={apLoading} disabled={apSaving}>
+        {#if !apLoading}
+          <span class="mr-2 inline-flex items-center"><Icon name="refresh" /></span>
+        {/if}
         Reload
       </Button>
     </div>
   </Card>
 
   <Card className="space-y-4">
-    <h2 class="text-lg font-semibold">Network MAC addresses</h2>
+    <h2 class="flex items-center gap-2 text-lg font-semibold">
+      <Icon name="network" className="h-5 w-5 text-primary" />
+      Network MAC addresses
+    </h2>
 
     {#if macsLoading}
       <Loading label="Loading MAC addresses…" />
@@ -138,11 +154,19 @@
     </div>
 
     <div class="flex items-center gap-3">
-      <Button variant="secondary" onclick={loadMacs} loading={macsLoading}>Refresh MAC addresses</Button>
+      <Button variant="secondary" onclick={loadMacs} loading={macsLoading}>
+        {#if !macsLoading}
+          <span class="mr-2 inline-flex items-center"><Icon name="refresh" /></span>
+        {/if}
+        Refresh MAC addresses
+      </Button>
     </div>
   </Card>
 
   <div class="flex items-center gap-3">
-    <Button variant="secondary" onclick={() => goto('/')}>Back</Button>
+    <Button variant="secondary" onclick={() => goto('/')}>
+      <span class="mr-2 inline-flex items-center"><Icon name="back" /></span>
+      Back
+    </Button>
   </div>
 </div>
