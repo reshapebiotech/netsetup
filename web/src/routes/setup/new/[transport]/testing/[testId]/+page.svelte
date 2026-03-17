@@ -35,7 +35,7 @@
         return;
       } catch (e) {
         waitingForApi = true;
-        lastError = e instanceof Error ? e.message : 'Unable to reach API';
+        lastError = e instanceof Error ? e.message : 'Unable to reach setup service';
         await new Promise((resolve) => setTimeout(resolve, 1800));
       }
     }
@@ -57,19 +57,19 @@
 
   <Card className="space-y-3">
     <p class="text-sm text-muted-foreground">
-      The Raspberry Pi has one radio, so this browser can temporarily lose API access while we test {transport}.
-      Keep this tab open. We will continue automatically as soon as the API is reachable again.
+      The Raspberry Pi has one radio, so this page can briefly disconnect while we test {transport}.
+      Keep this tab open. We will continue automatically as soon as the device is reachable again.
     </p>
 
     {#if waitingForApi}
-      <Loading label="Reconnecting to setup API…" />
+      <Loading label="Reconnecting to your device…" />
     {:else}
       <Loading label="Running connection test…" />
     {/if}
 
     {#if waitingForApi}
       <Alert tone="info">
-        Reconnecting to setup API… {lastError}
+        Reconnecting to your device… {lastError}
       </Alert>
     {/if}
 

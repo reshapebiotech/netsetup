@@ -19,10 +19,16 @@
     try {
       await networkApi.saveTest(testId);
       status = 'saved';
-      message = 'Saved. The setup API may disconnect now while network services restart.';
+      message = 'Saved. This page may disconnect briefly while network services restart.';
     } catch (e) {
-      status = 'error';
-      message = e instanceof Error ? e.message : 'Failed to save test';
+      const msg = e instanceof Error ? e.message : 'Failed to save connection';
+      if (msg.toLowerCase().includes('timed out') || msg.toLowerCase().includes('abort')) {
+        status = 'saved';
+        message = 'Connection is switching. This page may disconnect briefly, which is expected.';
+      } else {
+        status = 'error';
+        message = msg;
+      }
     }
   }
 
@@ -47,7 +53,7 @@
     {:else}
       <Alert tone="info">{message}</Alert>
       <p class="text-sm text-muted-foreground">
-        This is expected behavior: during save, this browser can lose access to the setup API.
+        This is expected behavior: during save, this page can briefly lose connection.
         If the page freezes or disconnects, you can close it safely. Setup is complete.
       </p>
       <p class="text-sm text-muted-foreground">

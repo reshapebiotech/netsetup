@@ -1,4 +1,6 @@
 import type {
+  AccessPointControllerStatus,
+  AccessPointPreferences,
   ConnectionState,
   Connectivity,
   EthernetNetwork,
@@ -31,6 +33,11 @@ async function withTimeout(input: RequestInfo | URL, init?: RequestInit, timeout
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     return await fetch(input, { ...init, signal: ctrl.signal });
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      throw new Error('Request timed out while waiting for the device');
+    }
+    throw e;
   } finally {
     clearTimeout(timer);
   }
@@ -65,6 +72,27 @@ export const networkApi = {
     return res.json();
   },
 
+  async getApControllerStatus(): Promise<AccessPointControllerStatus> {
+    const res = await withTimeout(api('/access_point/controller'));
+    await parseOrThrow(res);
+    return res.json();
+  },
+
+  async getApPreferences(): Promise<AccessPointPreferences> {
+    const res = await withTimeout(api('/access_point/preferences'));
+    await parseOrThrow(res);
+    return res.json();
+  },
+
+  async setApPreferences(prefs: AccessPointPreferences): Promise<void> {
+    const res = await withTimeout(api('/access_point/preferences'), {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(prefs)
+    });
+    await parseOrThrow(res);
+  },
+
   async startTest(transport: Transport, settings: NetworkSettings): Promise<string> {
     const endpoint = transport === 'wifi' ? '/wifi/test' : '/ethernet/test';
     const res = await withTimeout(api(endpoint), {
@@ -84,7 +112,7 @@ export const networkApi = {
   },
 
   async saveTest(testId: string): Promise<void> {
-    const res = await withTimeout(api(`/tests/${testId}/save`), { method: 'POST' });
+    const res = await withTimeout(api(`/tests/${testId}/save`), { method: 'POST' }, 20000);
     await parseOrThrow(res);
   },
 

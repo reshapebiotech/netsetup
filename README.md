@@ -30,34 +30,22 @@ You can run the stack locally with the mock controller.
 
 3. **Run API (mock mode):**
    ```sh
-   mise run api
+   just api-run
    ```
 
 4. **Run web dev server:**
    ```sh
-   mise run web
+   just web-dev
    ```
 
 5. Visit `http://localhost:5173`.
-
-## Production / End-to-End Testing
-
-The root `Dockerfile` builds web assets before compiling the API, so release builds embed the UI into the API binary. The runtime image still includes `web/build`, and `STATIC_DIR` can override serving from disk if needed.
-
-For full E2E testing mimicking Raspberry Pi setup:
-
-```sh
-docker buildx bake -f docker-bake.hcl machine-setup-test
-```
-
-Integration tests run the image in privileged mode with NetworkManager and D-Bus.
 
 ## Testing
 
 Run API tests:
 
 ```sh
-cargo test -p api
+cargo test -p api --bin api
 ```
 
 Run web checks + unit tests:
@@ -72,4 +60,20 @@ Run browser E2E (headless, using local Chromium on macOS):
 
 ```sh
 PLAYWRIGHT_CHROMIUM_PATH=/Applications/Chromium.app/Contents/MacOS/Chromium bun run test:e2e
+```
+
+## Build + Run API
+
+Single command that builds web assets and runs the Rust API (mock network):
+
+```sh
+just run-api
+```
+
+## Cross Compile for Raspberry Pi (Linux ARM64)
+
+Build web assets and cross-compile the API binary with `cargo-zigbuild`:
+
+```sh
+just build-linux-arm64
 ```

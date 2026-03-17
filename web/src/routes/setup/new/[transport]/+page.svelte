@@ -22,9 +22,11 @@
   let ssid = '';
   let hiddenSsid = false;
   let password = '';
+  let showPassword = false;
   let enterprise = false;
   let eapLogin = '';
   let eapPassword = '';
+  let showEapPassword = false;
 
   let ipMethod: 'auto' | 'manual' = 'auto';
   let ipv4Address = '';
@@ -160,12 +162,30 @@
         </label>
         <label class="space-y-2 text-sm font-medium">
           Enterprise password
-          <Input bind:value={eapPassword} type="password" disabled={submitting} />
+          <div class="flex items-center gap-2">
+            <Input bind:value={eapPassword} type={showEapPassword ? 'text' : 'password'} disabled={submitting} />
+            <Button
+              variant="secondary"
+              onclick={() => (showEapPassword = !showEapPassword)}
+              disabled={submitting}
+            >
+              {showEapPassword ? 'Hide' : 'Show'}
+            </Button>
+          </div>
         </label>
       {:else}
         <label class="space-y-2 text-sm font-medium">
           Password
-          <Input bind:value={password} type="password" disabled={submitting} />
+          <div class="flex items-center gap-2">
+            <Input bind:value={password} type={showPassword ? 'text' : 'password'} disabled={submitting} />
+            <Button
+              variant="secondary"
+              onclick={() => (showPassword = !showPassword)}
+              disabled={submitting}
+            >
+              {showPassword ? 'Hide' : 'Show'}
+            </Button>
+          </div>
         </label>
       {/if}
     </Card>
@@ -199,6 +219,9 @@
     <label class="space-y-2 text-sm font-medium">
       Custom DNS servers (comma separated)
       <Input bind:value={dnsRaw} placeholder="1.1.1.1,8.8.8.8" disabled={submitting} />
+      <p class="text-xs font-normal text-muted-foreground">
+        Leave empty to use DNS servers provided by DHCP.
+      </p>
     </label>
   </Card>
 

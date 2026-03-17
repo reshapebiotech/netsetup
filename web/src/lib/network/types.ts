@@ -48,3 +48,14 @@ export interface Connectivity {
   is_connected: boolean;
   can_reach_host: boolean;
 }
+
+export interface AccessPointPreferences {
+  persistent_enabled: boolean;
+}
+
+export interface AccessPointControllerStatus {
+  is_enabled: boolean;
+  persistent_enabled: boolean;
+  automation_paused: boolean;
+  last_reason: string;
+}

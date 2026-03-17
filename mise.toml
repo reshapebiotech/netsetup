@@ -2,29 +2,5 @@
 rust = "stable"
 bun = "1.2.23"
 node = "22"
-
-[tasks.api]
-run = "MOCK_NETWORK=1 cargo run -p api"
-
-[tasks.web]
-run = "cd web && bun run dev"
-
-[tasks.dev]
-description = "Run API + web dev servers in separate terminals"
-run = "echo 'Run `mise run api` and `mise run web` in separate terminals'"
-
-[tasks.dev-browser]
-description = "Launch Playwright UI for real-browser development"
-run = "cd web && bunx playwright test --ui"
-
-[tasks.test-web]
-run = "cd web && bun run test"
-
-[tasks.test-web-unit]
-run = "cd web && bun run test:unit"
-
-[tasks.test-web-e2e]
-run = "cd web && bun run test:e2e"
-
-[tasks.check]
-run = "cd web && bun run check && cargo test -p api"
+just = "latest"
+"cargo:cargo-zigbuild" = "latest"

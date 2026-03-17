@@ -6,14 +6,14 @@ use axum::Router;
 use axum::body::Body;
 #[cfg(not(debug_assertions))]
 use axum::http::HeaderValue;
-use axum::http::{Request, StatusCode, Uri};
 #[cfg(not(debug_assertions))]
 use axum::http::header::CONTENT_TYPE;
+use axum::http::{Request, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::Arc;
-use tower::util::ServiceExt;
 use tokio::net::{TcpListener, UdpSocket};
+use tower::util::ServiceExt;
 use tower_http::services::{ServeDir, ServeFile};
 use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -43,7 +43,11 @@ async fn serve_from_dir(uri: Uri, static_dir: &str) -> Response {
         .unwrap_or_else(|_| Request::new(Body::empty()));
     match service.oneshot(request).await {
         Ok(res) => res.map(Body::new),
-        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Failed to serve static content").into_response(),
+        Err(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to serve static content",
+        )
+            .into_response(),
     }
 }
 
@@ -146,8 +150,12 @@ async fn main() {
         };
 
     let state = AppState {
-        network: network_controller,
+        network: network_controller.clone(),
     };
+
+    if let Err(e) = network_controller.start_ap_supervisor().await {
+        error!("Failed to start AP supervisor: {}", e);
+    }
 
     if let Some(static_dir) = static_dir_override() {
         info!("Serving static files from {}", static_dir);

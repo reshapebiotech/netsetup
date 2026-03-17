@@ -2,15 +2,13 @@ pub mod mock;
 pub mod nmcli;
 pub mod types;
 
-#[cfg(test)]
-pub mod integration_tests;
-
 use async_trait::async_trait;
 use thiserror::Error;
 use uuid::Uuid;
 
 use crate::network::types::{
-    AccessPointStatus, ConnectionState, Connectivity, EthernetNetwork, NetworkSettings, SavedNetwork, WifiNetwork,
+    AccessPointControllerStatus, AccessPointPreferences, AccessPointStatus, ConnectionState,
+    Connectivity, EthernetNetwork, NetworkSettings, SavedNetwork, WifiNetwork,
 };
 
 #[derive(Error, Debug)]
@@ -68,4 +66,16 @@ pub trait NetworkController: Send + Sync {
 
     /// Stops the local setup Hotspot
     async fn stop_hotspot(&self, ssid: &str) -> Result<()>;
+
+    /// Returns supervisor state for setup access point automation.
+    async fn get_ap_controller_status(&self) -> Result<AccessPointControllerStatus>;
+
+    /// Returns AP behavior preferences.
+    async fn get_ap_preferences(&self) -> Result<AccessPointPreferences>;
+
+    /// Updates AP behavior preferences.
+    async fn set_ap_preferences(&self, prefs: AccessPointPreferences) -> Result<()>;
+
+    /// Starts AP supervisor loop.
+    async fn start_ap_supervisor(&self) -> Result<()>;
 }

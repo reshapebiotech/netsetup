@@ -77,3 +77,16 @@ pub struct Connectivity {
 pub struct AccessPointStatus {
     pub is_enabled: bool,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct AccessPointPreferences {
+    pub persistent_enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct AccessPointControllerStatus {
+    pub is_enabled: bool,
+    pub persistent_enabled: bool,
+    pub automation_paused: bool,
+    pub last_reason: String,
+}

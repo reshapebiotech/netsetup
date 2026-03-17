@@ -45,7 +45,7 @@ test('wifi test flow shows handoff copy', async ({ page }) => {
   await page.waitForURL('**/setup/new/wifi/testing/abc-123');
 
   await expect(page.getByText('Hold tight while we switch networks')).toBeVisible();
-  await expect(page.getByText('Reconnecting to setup API…', { exact: true })).toBeVisible();
+  await expect(page.getByText('Reconnecting to your device…', { exact: true })).toBeVisible();
 
   await expect(page.getByText('test complete')).toBeVisible();
   await page.getByRole('button', { name: 'Save connection' }).click();

@@ -1,6 +1,6 @@
 use crate::network::types::{
-    AccessPointStatus, ConnectionState, Connectivity, EthernetNetwork, NetworkSettings, NetworkTransport,
-    SavedNetwork, WifiNetwork,
+    AccessPointControllerStatus, AccessPointPreferences, AccessPointStatus, ConnectionState,
+    Connectivity, EthernetNetwork, NetworkSettings, NetworkTransport, SavedNetwork, WifiNetwork,
 };
 use crate::network::{NetworkController, NetworkError, Result as NetResult};
 use async_trait::async_trait;
@@ -20,6 +20,7 @@ struct MockTestRecord {
 pub struct MockNetworkController {
     tests: Arc<Mutex<HashMap<Uuid, MockTestRecord>>>,
     saved: Arc<Mutex<Option<SavedNetwork>>>,
+    ap_prefs: Arc<Mutex<AccessPointPreferences>>,
 }
 
 impl MockNetworkController {
@@ -32,10 +33,17 @@ impl MockNetworkController {
                 display_name: "Home_Network".into(),
                 managed: true,
             }))),
+            ap_prefs: Arc::new(Mutex::new(AccessPointPreferences {
+                persistent_enabled: false,
+            })),
         }
     }
 
-    async fn start_test(&self, settings: NetworkSettings, transport: NetworkTransport) -> NetResult<Uuid> {
+    async fn start_test(
+        &self,
+        settings: NetworkSettings,
+        transport: NetworkTransport,
+    ) -> NetResult<Uuid> {
         let test_id = Uuid::new_v4();
         {
             let mut tests = self.tests.lock().await;
@@ -71,7 +79,8 @@ impl MockNetworkController {
             if ok {
                 record.state = ConnectionState::Connected;
             } else {
-                record.state = ConnectionState::Failed("Incorrect password or network out of range".into());
+                record.state =
+                    ConnectionState::Failed("Incorrect password or network out of range".into());
             }
         });
 
@@ -196,5 +205,33 @@ impl NetworkController for MockNetworkController {
             is_connected: true,
             can_reach_host: true,
         })
+    }
+
+    async fn get_ap_controller_status(&self) -> NetResult<AccessPointControllerStatus> {
+        let prefs = self.ap_prefs.lock().await.clone();
+        Ok(AccessPointControllerStatus {
+            is_enabled: prefs.persistent_enabled,
+            persistent_enabled: prefs.persistent_enabled,
+            automation_paused: false,
+            last_reason: if prefs.persistent_enabled {
+                "Persistent AP enabled".into()
+            } else {
+                "Uplink healthy".into()
+            },
+        })
+    }
+
+    async fn get_ap_preferences(&self) -> NetResult<AccessPointPreferences> {
+        Ok(self.ap_prefs.lock().await.clone())
+    }
+
+    async fn set_ap_preferences(&self, prefs: AccessPointPreferences) -> NetResult<()> {
+        let mut guard = self.ap_prefs.lock().await;
+        *guard = prefs;
+        Ok(())
+    }
+
+    async fn start_ap_supervisor(&self) -> NetResult<()> {
+        Ok(())
     }
 }

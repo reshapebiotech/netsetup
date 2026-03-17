@@ -10,7 +10,8 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::network::types::{
-    AccessPointStatus, ConnectionState, Connectivity, EthernetNetwork, NetworkSettings, SavedNetwork, WifiNetwork,
+    AccessPointControllerStatus, AccessPointPreferences, AccessPointStatus, ConnectionState,
+    Connectivity, EthernetNetwork, NetworkSettings, SavedNetwork, WifiNetwork,
 };
 use crate::network::{NetworkController, NetworkError};
 
@@ -32,7 +33,13 @@ pub fn router() -> Router<AppState> {
         .route("/wifi/connect", post(connect_wifi_compat))
         .route("/ethernet/connect", post(connect_ethernet_compat))
         .route("/status/{test_id}", get(status))
-        .route("/connectivity", get(get_connectivity)).route("/access_point", get(get_hotspot_status))
+        .route("/connectivity", get(get_connectivity))
+        .route("/access_point", get(get_hotspot_status))
+        .route("/access_point/controller", get(get_ap_controller_status))
+        .route(
+            "/access_point/preferences",
+            get(get_ap_preferences).put(set_ap_preferences),
+        )
 }
 
 // Map domain errors to HTTP errors
@@ -153,11 +160,32 @@ async fn get_connectivity(
     Ok(Json(connectivity))
 }
 
+async fn get_ap_controller_status(
+    State(state): State<AppState>,
+) -> Result<Json<AccessPointControllerStatus>, NetworkError> {
+    let status = state.network.get_ap_controller_status().await?;
+    Ok(Json(status))
+}
+
+async fn get_ap_preferences(
+    State(state): State<AppState>,
+) -> Result<Json<AccessPointPreferences>, NetworkError> {
+    let prefs = state.network.get_ap_preferences().await?;
+    Ok(Json(prefs))
+}
+
+async fn set_ap_preferences(
+    State(state): State<AppState>,
+    Json(prefs): Json<AccessPointPreferences>,
+) -> Result<StatusCode, NetworkError> {
+    state.network.set_ap_preferences(prefs).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::api::network::{router, AppState};
+    use crate::api::network::{AppState, router};
     use crate::network::mock::MockNetworkController;
-    use crate::network::types::{IpMethod, NetworkSettings};
     use axum_test::TestServer;
     use serde_json::json;
     use std::sync::Arc;
@@ -193,5 +221,30 @@ mod tests {
 
         let json_body = response.json::<serde_json::Value>();
         assert!(json_body.get("test_id").is_some());
+    }
+
+    #[tokio::test]
+    async fn test_ap_preferences_roundtrip() {
+        let server = get_test_server();
+
+        let initial = server.get("/access_point/preferences").await;
+        initial.assert_status_ok();
+        assert_eq!(
+            initial.json::<serde_json::Value>(),
+            json!({ "persistent_enabled": false })
+        );
+
+        server
+            .put("/access_point/preferences")
+            .json(&json!({ "persistent_enabled": true }))
+            .await
+            .assert_status(axum::http::StatusCode::NO_CONTENT);
+
+        let updated = server.get("/access_point/preferences").await;
+        updated.assert_status_ok();
+        assert_eq!(
+            updated.json::<serde_json::Value>(),
+            json!({ "persistent_enabled": true })
+        );
     }
 }
