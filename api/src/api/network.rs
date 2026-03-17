@@ -6,6 +6,7 @@ use axum::{
     routing::{delete, get, post},
 };
 use serde::Serialize;
+use std::net::Ipv4Addr;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -91,10 +92,64 @@ pub struct ConnectResponse {
     pub test_id: Uuid,
 }
 
+fn validate_network_settings(settings: &NetworkSettings) -> Result<(), NetworkError> {
+    if let Some(ipv4) = &settings.ipv4 {
+        if let Some(dns) = &ipv4.dns {
+            for server in dns {
+                if server.parse::<Ipv4Addr>().is_err() {
+                    return Err(NetworkError::ConnectionFailed(format!(
+                        "Invalid DNS server '{}': IPv4 only",
+                        server
+                    )));
+                }
+            }
+        }
+
+        if ipv4.method == crate::network::types::IpMethod::Manual {
+            let addresses = ipv4.address_data.as_ref().ok_or_else(|| {
+                NetworkError::ConnectionFailed("Manual IPv4 requires at least one address".into())
+            })?;
+            if addresses.is_empty() {
+                return Err(NetworkError::ConnectionFailed(
+                    "Manual IPv4 requires at least one address".into(),
+                ));
+            }
+
+            for addr in addresses {
+                if addr.address.parse::<Ipv4Addr>().is_err() {
+                    return Err(NetworkError::ConnectionFailed(format!(
+                        "Invalid manual IPv4 address '{}'",
+                        addr.address
+                    )));
+                }
+                if addr.prefix > 32 {
+                    return Err(NetworkError::ConnectionFailed(format!(
+                        "Invalid IPv4 prefix '{}': must be between 0 and 32",
+                        addr.prefix
+                    )));
+                }
+            }
+
+            let gateway = ipv4.gateway.as_ref().ok_or_else(|| {
+                NetworkError::ConnectionFailed("Manual IPv4 gateway is required".into())
+            })?;
+            if gateway.parse::<Ipv4Addr>().is_err() {
+                return Err(NetworkError::ConnectionFailed(format!(
+                    "Invalid IPv4 gateway '{}'",
+                    gateway
+                )));
+            }
+        }
+    }
+
+    Ok(())
+}
+
 async fn test_wifi(
     State(state): State<AppState>,
     Json(settings): Json<NetworkSettings>,
 ) -> Result<(StatusCode, Json<ConnectResponse>), NetworkError> {
+    validate_network_settings(&settings)?;
     let test_id = state.network.start_wifi_test(settings).await?;
     Ok((StatusCode::ACCEPTED, Json(ConnectResponse { test_id })))
 }
@@ -103,6 +158,7 @@ async fn test_ethernet(
     State(state): State<AppState>,
     Json(settings): Json<NetworkSettings>,
 ) -> Result<(StatusCode, Json<ConnectResponse>), NetworkError> {
+    validate_network_settings(&settings)?;
     let test_id = state.network.start_ethernet_test(settings).await?;
     Ok((StatusCode::ACCEPTED, Json(ConnectResponse { test_id })))
 }
@@ -127,6 +183,7 @@ async fn connect_wifi_compat(
     State(state): State<AppState>,
     Json(settings): Json<NetworkSettings>,
 ) -> Result<(StatusCode, Json<ConnectResponse>), NetworkError> {
+    validate_network_settings(&settings)?;
     let test_id = state.network.start_wifi_test(settings).await?;
     Ok((StatusCode::ACCEPTED, Json(ConnectResponse { test_id })))
 }
@@ -135,6 +192,7 @@ async fn connect_ethernet_compat(
     State(state): State<AppState>,
     Json(settings): Json<NetworkSettings>,
 ) -> Result<(StatusCode, Json<ConnectResponse>), NetworkError> {
+    validate_network_settings(&settings)?;
     let test_id = state.network.start_ethernet_test(settings).await?;
     Ok((StatusCode::ACCEPTED, Json(ConnectResponse { test_id })))
 }
@@ -254,5 +312,48 @@ mod tests {
             updated.json::<serde_json::Value>(),
             json!({ "persistent_enabled": true })
         );
+    }
+
+    #[tokio::test]
+    async fn test_rejects_invalid_dns_server() {
+        let server = get_test_server();
+        let response = server
+            .post("/ethernet/test")
+            .json(&json!({
+                "ipv4": {
+                    "method": "auto",
+                    "dns": ["aaaa"]
+                }
+            }))
+            .await;
+
+        response.assert_status(axum::http::StatusCode::BAD_REQUEST);
+        let body = response.json::<serde_json::Value>();
+        assert!(body["error"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("Invalid DNS server"));
+    }
+
+    #[tokio::test]
+    async fn test_rejects_invalid_manual_ipv4() {
+        let server = get_test_server();
+        let response = server
+            .post("/ethernet/test")
+            .json(&json!({
+                "ipv4": {
+                    "method": "manual",
+                    "address_data": [{"address": "10.0.0.5", "prefix": 44}],
+                    "gateway": "10.0.0.1"
+                }
+            }))
+            .await;
+
+        response.assert_status(axum::http::StatusCode::BAD_REQUEST);
+        let body = response.json::<serde_json::Value>();
+        assert!(body["error"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("Invalid IPv4 prefix"));
     }
 }

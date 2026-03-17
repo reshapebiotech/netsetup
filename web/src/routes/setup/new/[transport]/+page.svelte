@@ -9,6 +9,7 @@
   import Loading from '$lib/components/ui/loading.svelte';
   import { networkApi } from '$lib/network/api';
   import type { NetworkSettings, Transport, WifiNetwork } from '$lib/network/types';
+  import { buildSettingsFromForm } from '$lib/network/settings';
   import { validateSettings } from '$lib/network/validators';
   import { onMount } from 'svelte';
 
@@ -54,33 +55,19 @@
   onMount(loadWifi);
 
   function buildSettings(): NetworkSettings {
-    const settings: NetworkSettings = {};
-
-    if (transport === 'wifi') {
-      settings.ssid = ssid.trim();
-      if (enterprise) {
-        settings.eap_login = eapLogin.trim();
-        settings.eap_password = eapPassword;
-      } else {
-        settings.password = password;
-      }
-    }
-
-    if (ipMethod === 'manual') {
-      settings.ipv4 = {
-        method: 'manual',
-        address_data: [{ address: ipv4Address.trim(), prefix: Number.parseInt(ipv4Prefix, 10) || 24 }],
-        gateway: ipv4Gateway.trim(),
-        dns: dnsRaw
-          .split(',')
-          .map((entry) => entry.trim())
-          .filter(Boolean)
-      };
-    } else {
-      settings.ipv4 = { method: 'auto' };
-    }
-
-    return settings;
+    return buildSettingsFromForm({
+      transport,
+      ssid,
+      password,
+      enterprise,
+      eapLogin,
+      eapPassword,
+      ipMethod,
+      ipv4Address,
+      ipv4Prefix,
+      ipv4Gateway,
+      dnsRaw
+    });
   }
 
   async function startTest() {
@@ -220,7 +207,7 @@
       Custom DNS servers (comma separated)
       <Input bind:value={dnsRaw} placeholder="1.1.1.1,8.8.8.8" disabled={submitting} />
       <p class="text-xs font-normal text-muted-foreground">
-        Leave empty to use DNS servers provided by DHCP.
+        Leave empty to use DNS servers provided by DHCP. IPv4 addresses only.
       </p>
     </label>
   </Card>
