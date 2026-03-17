@@ -10,6 +10,7 @@ use std::net::Ipv4Addr;
 use std::sync::Arc;
 use uuid::Uuid;
 
+use crate::branding::BrandingConfig;
 use crate::network::types::{
     AccessPointControllerStatus, AccessPointPreferences, AccessPointStatus, ConnectionState,
     Connectivity, EthernetNetwork, NetworkMacAddresses, NetworkSettings, SavedNetwork, WifiNetwork,
@@ -19,6 +20,7 @@ use crate::network::{NetworkController, NetworkError};
 #[derive(Clone)]
 pub struct AppState {
     pub network: Arc<dyn NetworkController>,
+    pub branding: BrandingConfig,
 }
 
 pub fn router() -> Router<AppState> {
@@ -260,6 +262,7 @@ mod tests {
         let mock_controller = Arc::new(MockNetworkController::new());
         let state = AppState {
             network: mock_controller,
+            branding: crate::branding::BrandingConfig::default(),
         };
         let app = router().with_state(state);
         TestServer::new(app)
@@ -329,10 +332,12 @@ mod tests {
 
         response.assert_status(axum::http::StatusCode::BAD_REQUEST);
         let body = response.json::<serde_json::Value>();
-        assert!(body["error"]
-            .as_str()
-            .unwrap_or_default()
-            .contains("Invalid DNS server"));
+        assert!(
+            body["error"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("Invalid DNS server")
+        );
     }
 
     #[tokio::test]
@@ -351,9 +356,11 @@ mod tests {
 
         response.assert_status(axum::http::StatusCode::BAD_REQUEST);
         let body = response.json::<serde_json::Value>();
-        assert!(body["error"]
-            .as_str()
-            .unwrap_or_default()
-            .contains("Invalid IPv4 prefix"));
+        assert!(
+            body["error"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("Invalid IPv4 prefix")
+        );
     }
 }

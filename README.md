@@ -1,12 +1,12 @@
-<h1 align="center">Machine Setup (Rust Rewrite)</h1>
+<h1 align="center">reshape-netsetup</h1>
 
 <p align="center">
-The setup workflow for our machines.
+Device network setup with captive portal support.
 </p>
 
 ---
 
-An application that automates network setup of a new machine. It exposes a Captive Portal via DNS interception, serves a SvelteKit frontend from a Rust Axum binary, and interfaces with NetworkManager via `nmcli`.
+An application that automates first-run network setup. It exposes a captive portal via DNS interception, serves a SvelteKit frontend from a Rust Axum binary, and interfaces with NetworkManager via `nmcli`.
 
 ## Architecture
 
@@ -28,24 +28,19 @@ You can run the stack locally with the mock controller.
    cd web && bun install
    ```
 
-3. **Run API (mock mode):**
+3. **Run API + web (mock mode):**
    ```sh
-   just api-run
+   just dev
    ```
 
-4. **Run web dev server:**
-   ```sh
-   just web-dev
-   ```
-
-5. Visit `http://localhost:5173`.
+4. Visit `http://localhost:5173`.
 
 ## Testing
 
 Run API tests:
 
 ```sh
-cargo test -p api --bin api
+cargo test -p api --bin reshape-netsetup
 ```
 
 Run web checks + unit tests:
@@ -67,7 +62,7 @@ PLAYWRIGHT_CHROMIUM_PATH=/Applications/Chromium.app/Contents/MacOS/Chromium bun 
 Single command that builds web assets and runs the Rust API (mock network):
 
 ```sh
-just run-api
+just run
 ```
 
 ## Cross Compile for Raspberry Pi (Linux ARM64)
@@ -75,14 +70,14 @@ just run-api
 Build web assets and cross-compile the API binary with `cargo-zigbuild`:
 
 ```sh
-just build-linux-arm64
+just build-arm64
 ```
 
 ## Raspberry Pi Captive Portal Setup
 
 This repo includes production helpers for running as a captive portal service on Raspberry Pi:
 
-- `deploy/systemd/network-setup.service`
+- `deploy/systemd/reshape-netsetup.service`
 - `deploy/scripts/captive-portal-rules.sh`
 - `deploy/scripts/install-rpi.sh`
 
@@ -98,10 +93,10 @@ This repo includes production helpers for running as a captive portal service on
 2. Run:
 
 ```sh
-./deploy/scripts/install-rpi.sh /path/to/network-setup-binary
+./deploy/scripts/install-rpi.sh /path/to/reshape-netsetup-binary
 ```
 
-If your binary is already at `./target/aarch64-unknown-linux-gnu/release/api`, the argument can be omitted.
+If your binary is already at `./target/aarch64-unknown-linux-gnu/release/reshape-netsetup`, the argument can be omitted.
 
 ### Service configuration
 
@@ -111,9 +106,41 @@ The default unit uses:
 - `DNS_PORT=10053`
 - `CAPTIVE_IP=10.42.0.1`
 
-Adjust in `deploy/systemd/network-setup.service` if needed, then:
+Adjust in `deploy/systemd/reshape-netsetup.service` if needed, then:
 
 ```sh
 sudo systemctl daemon-reload
-sudo systemctl restart network-setup
+sudo systemctl restart reshape-netsetup
+```
+
+## Branding configuration
+
+Branding is loaded by the API from TOML and exposed at `GET /api/branding`.
+
+- Default path: `/etc/reshape-netsetup/branding.toml`
+- Override with `BRANDING_CONFIG_PATH=/custom/path.toml`
+- Branding assets are served from the branding TOML directory by default
+- Optional override: `BRANDING_ASSETS_DIR=/custom/assets/dir`
+- Missing/invalid file falls back to built-in defaults
+- Starter template: `deploy/branding.example.toml`
+- Local dev profile used by `just dev`: `deploy/branding.reshape.toml`
+- Local dev assets are in `deploy/logo.png` and `deploy/favicon.ico`
+
+Example:
+
+```toml
+product_name = "Reshape Netsetup"
+company_name = "Reshape Biotech"
+headline = "Network configuration"
+support_text = "Connect this device to your network."
+success_message = "Your device is now online and ready to use."
+logo_path = "/branding/logo.png"
+background_path = ""
+favicon_path = "/branding/favicon.ico"
+help_title = "Need help?"
+help_text = "Use the resources below for setup guidance."
+
+[[help_links]]
+label = "Setup guide"
+url = "https://example.com/setup-guide"
 ```

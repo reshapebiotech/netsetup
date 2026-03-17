@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "machine-setup-web",
+      "name": "reshape-netsetup-web",
       "devDependencies": {
         "@playwright/test": "^1.54.2",
         "@sveltejs/adapter-static": "^3.0.8",

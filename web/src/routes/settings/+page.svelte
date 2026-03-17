@@ -6,6 +6,7 @@
   import Alert from '$lib/components/ui/alert.svelte';
   import Loading from '$lib/components/ui/loading.svelte';
   import { networkApi } from '$lib/network/api';
+  import { branding } from '$lib/branding';
   import type { NetworkMacAddresses } from '$lib/network/types';
 
   let apPersistent = false;
@@ -65,7 +66,7 @@
 
 <div class="space-y-6">
   <header class="space-y-2">
-    <p class="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">Machine Setup</p>
+    <p class="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">{$branding.product_name}</p>
     <h1 class="text-3xl font-bold">Settings</h1>
   </header>
 

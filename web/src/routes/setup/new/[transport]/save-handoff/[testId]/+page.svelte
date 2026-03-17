@@ -6,6 +6,7 @@
   import Button from '$lib/components/ui/button.svelte';
   import Alert from '$lib/components/ui/alert.svelte';
   import { networkApi } from '$lib/network/api';
+  import { branding } from '$lib/branding';
 
   let testId = '';
   let status: 'saving' | 'saved' | 'error' = 'saving';
@@ -57,7 +58,7 @@
         If the page freezes or disconnects, you can close it safely. Setup is complete.
       </p>
       <p class="text-sm text-muted-foreground">
-        Your device is now online and ready to use.
+        {$branding.success_message}
       </p>
       {#if status === 'saved'}
         <Button onclick={() => goto('/')}>Return home</Button>

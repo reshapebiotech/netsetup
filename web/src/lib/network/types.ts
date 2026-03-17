@@ -64,3 +64,22 @@ export interface NetworkMacAddresses {
   wifi: string[];
   ethernet: string[];
 }
+
+export interface BrandingConfig {
+  product_name: string;
+  company_name: string;
+  headline: string;
+  support_text: string;
+  success_message: string;
+  logo_path: string;
+  background_path: string;
+  favicon_path: string;
+  help_title: string;
+  help_text: string;
+  help_links: HelpLink[];
+}
+
+export interface HelpLink {
+  label: string;
+  url: string;
+}

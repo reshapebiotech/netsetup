@@ -1,5 +1,6 @@
 import type {
   AccessPointControllerStatus,
+  BrandingConfig,
   NetworkMacAddresses,
   AccessPointPreferences,
   ConnectionState,
@@ -98,6 +99,12 @@ export const networkApi = {
       body: JSON.stringify(prefs)
     });
     await parseOrThrow(res);
+  },
+
+  async getBranding(): Promise<BrandingConfig> {
+    const res = await withTimeout('/api/branding');
+    await parseOrThrow(res);
+    return res.json();
   },
 
   async startTest(transport: Transport, settings: NetworkSettings): Promise<string> {

@@ -1,5 +1,5 @@
 [Unit]
-Description=Reshape Network Setup Service
+Description=Reshape Netsetup Service
 After=network-online.target NetworkManager.service
 Wants=network-online.target
 
@@ -11,9 +11,9 @@ Environment=RUST_LOG=info
 Environment=DNS_PORT=10053
 Environment=AP_IFACE=wlan0
 Environment=CAPTIVE_IP=10.42.0.1
-WorkingDirectory=/opt/network-setup
+WorkingDirectory=/opt/reshape-netsetup
 ExecStartPre=/usr/local/bin/captive-portal-rules.sh up
-ExecStart=/opt/network-setup/network-setup
+ExecStart=/opt/reshape-netsetup/reshape-netsetup
 ExecStopPost=/usr/local/bin/captive-portal-rules.sh down
 Restart=always
 RestartSec=2

@@ -6,6 +6,7 @@
   import Alert from '$lib/components/ui/alert.svelte';
   import Loading from '$lib/components/ui/loading.svelte';
   import { networkApi } from '$lib/network/api';
+  import { branding } from '$lib/branding';
   import type { SavedNetwork } from '$lib/network/types';
 
   let saved: SavedNetwork[] = [];
@@ -46,8 +47,9 @@
 
 <div class="space-y-6">
   <header class="space-y-2">
-    <p class="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">Machine Setup</p>
-    <h1 class="text-3xl font-bold">Network configuration</h1>
+    <p class="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">{$branding.product_name}</p>
+    <h1 class="text-3xl font-bold">{$branding.headline}</h1>
+    <p class="text-sm text-muted-foreground">{$branding.support_text}</p>
     <p class="text-sm text-muted-foreground">Pick one managed network profile. Saving a new one replaces the previous profile.</p>
   </header>
 
@@ -83,6 +85,22 @@
       {/each}
     {/if}
   </Card>
+
+  {#if $branding.help_links.length > 0}
+    <Card className="space-y-3">
+      <h2 class="text-lg font-semibold">{$branding.help_title}</h2>
+      {#if $branding.help_text}
+        <p class="text-sm text-muted-foreground">{$branding.help_text}</p>
+      {/if}
+      <div class="flex flex-wrap items-center gap-2">
+        {#each $branding.help_links as link}
+          <a class="rounded-md border border-border bg-white px-3 py-2 text-sm font-medium text-primary hover:bg-muted" href={link.url} target="_blank" rel="noreferrer">
+            {link.label}
+          </a>
+        {/each}
+      </div>
+    </Card>
+  {/if}
 
   <div class="flex items-center gap-3">
     <Button onclick={() => goto('/setup/new')}>Add new network</Button>
