@@ -10,7 +10,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::network::types::{
-    ConnectionState, AccessPointStatus, Connectivity, EthernetNetwork, NetworkSettings, SavedNetwork, WifiNetwork,
+    AccessPointStatus, ConnectionState, Connectivity, EthernetNetwork, NetworkSettings, SavedNetwork, WifiNetwork,
 };
 use crate::network::{NetworkController, NetworkError};
 
@@ -25,8 +25,12 @@ pub fn router() -> Router<AppState> {
         .route("/ethernet/scan", get(scan_ethernet))
         .route("/saved", get(get_saved))
         .route("/saved/{id}", delete(forget_saved))
-        .route("/wifi/connect", post(connect_wifi))
-        .route("/ethernet/connect", post(connect_ethernet))
+        .route("/wifi/test", post(test_wifi))
+        .route("/ethernet/test", post(test_ethernet))
+        .route("/tests/{test_id}/save", post(save_test))
+        .route("/tests/{test_id}/discard", post(discard_test))
+        .route("/wifi/connect", post(connect_wifi_compat))
+        .route("/ethernet/connect", post(connect_ethernet_compat))
         .route("/status/{test_id}", get(status))
         .route("/connectivity", get(get_connectivity)).route("/access_point", get(get_hotspot_status))
 }
@@ -79,19 +83,51 @@ pub struct ConnectResponse {
     pub test_id: Uuid,
 }
 
-async fn connect_wifi(
+async fn test_wifi(
     State(state): State<AppState>,
     Json(settings): Json<NetworkSettings>,
 ) -> Result<(StatusCode, Json<ConnectResponse>), NetworkError> {
-    let test_id = state.network.connect_wifi(settings).await?;
+    let test_id = state.network.start_wifi_test(settings).await?;
     Ok((StatusCode::ACCEPTED, Json(ConnectResponse { test_id })))
 }
 
-async fn connect_ethernet(
+async fn test_ethernet(
     State(state): State<AppState>,
     Json(settings): Json<NetworkSettings>,
 ) -> Result<(StatusCode, Json<ConnectResponse>), NetworkError> {
-    let test_id = state.network.connect_ethernet(settings).await?;
+    let test_id = state.network.start_ethernet_test(settings).await?;
+    Ok((StatusCode::ACCEPTED, Json(ConnectResponse { test_id })))
+}
+
+async fn save_test(
+    State(state): State<AppState>,
+    Path(test_id): Path<Uuid>,
+) -> Result<StatusCode, NetworkError> {
+    state.network.save_test(test_id).await?;
+    Ok(StatusCode::ACCEPTED)
+}
+
+async fn discard_test(
+    State(state): State<AppState>,
+    Path(test_id): Path<Uuid>,
+) -> Result<StatusCode, NetworkError> {
+    state.network.discard_test(test_id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn connect_wifi_compat(
+    State(state): State<AppState>,
+    Json(settings): Json<NetworkSettings>,
+) -> Result<(StatusCode, Json<ConnectResponse>), NetworkError> {
+    let test_id = state.network.start_wifi_test(settings).await?;
+    Ok((StatusCode::ACCEPTED, Json(ConnectResponse { test_id })))
+}
+
+async fn connect_ethernet_compat(
+    State(state): State<AppState>,
+    Json(settings): Json<NetworkSettings>,
+) -> Result<(StatusCode, Json<ConnectResponse>), NetworkError> {
+    let test_id = state.network.start_ethernet_test(settings).await?;
     Ok((StatusCode::ACCEPTED, Json(ConnectResponse { test_id })))
 }
 

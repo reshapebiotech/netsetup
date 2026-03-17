@@ -1,7 +1,21 @@
+FROM oven/bun:1 AS web-builder
+
+WORKDIR /usr/src/app/web
+COPY web/package.json ./
+COPY web/svelte.config.js ./
+COPY web/vite.config.ts ./
+COPY web/tsconfig.json ./
+COPY web/postcss.config.cjs ./
+COPY web/tailwind.config.ts ./
+RUN bun install
+COPY web/ ./
+RUN bun run build
+
 FROM rust:bookworm AS builder
 
 WORKDIR /usr/src/app
 COPY . .
+COPY --from=web-builder /usr/src/app/web/build /usr/src/app/web/build
 
 # Build API
 RUN cargo build --release -p api

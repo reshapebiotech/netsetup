@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v2
+      - name: Test API
+        run: cargo test -p api
+
+  web-unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v2
+      - name: Install web deps
+        run: cd web && bun install --frozen-lockfile
+      - name: Typecheck web
+        run: cd web && bun run check
+      - name: Unit tests
+        run: cd web && bun run test:unit
+
+  web-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v2
+      - name: Install web deps
+        run: cd web && bun install --frozen-lockfile
+      - name: Install Playwright browser
+        run: cd web && bunx playwright install --with-deps chromium
+      - name: E2E tests
+        run: cd web && bun run test:e2e

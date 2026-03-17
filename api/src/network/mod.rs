@@ -10,7 +10,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::network::types::{
-    ConnectionState, AccessPointStatus, Connectivity, EthernetNetwork, NetworkSettings, SavedNetwork, WifiNetwork,
+    AccessPointStatus, ConnectionState, Connectivity, EthernetNetwork, NetworkSettings, SavedNetwork, WifiNetwork,
 };
 
 #[derive(Error, Debug)]
@@ -39,14 +39,20 @@ pub trait NetworkController: Send + Sync {
     /// Returns up to 2 saved network profiles
     async fn get_saved_networks(&self) -> Result<Vec<SavedNetwork>>;
 
-    /// Applies wireless network settings and connects
-    async fn connect_wifi(&self, settings: NetworkSettings) -> Result<Uuid>;
+    /// Starts a Wi-Fi connection test without committing final managed config.
+    async fn start_wifi_test(&self, settings: NetworkSettings) -> Result<Uuid>;
 
-    /// Applies wired network settings and connects
-    async fn connect_ethernet(&self, settings: NetworkSettings) -> Result<Uuid>;
+    /// Starts an Ethernet connection test without committing final managed config.
+    async fn start_ethernet_test(&self, settings: NetworkSettings) -> Result<Uuid>;
 
     /// Polls the status of an ongoing connection test
     async fn connection_status(&self, test_id: Uuid) -> Result<ConnectionState>;
+
+    /// Commits the settings from a successful test and replaces the existing managed profile.
+    async fn save_test(&self, test_id: Uuid) -> Result<()>;
+
+    /// Discards a test and rolls back temporary artifacts.
+    async fn discard_test(&self, test_id: Uuid) -> Result<()>;
 
     /// Forgets a saved network by its internal ID (e.g. "managed-wifi-1" or UUID)
     async fn forget_network(&self, id: &str) -> Result<()>;

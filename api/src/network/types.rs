@@ -15,8 +15,17 @@ pub struct EthernetNetwork {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SavedNetwork {
-    pub id: String, // e.g. "managed-wifi-1"
-    pub ssid: String,
+    pub id: String,
+    pub transport: NetworkTransport,
+    pub display_name: String,
+    pub managed: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum NetworkTransport {
+    Wifi,
+    Ethernet,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

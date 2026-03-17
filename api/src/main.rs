@@ -3,8 +3,16 @@ pub mod dns;
 mod network;
 
 use axum::Router;
+use axum::body::Body;
+#[cfg(not(debug_assertions))]
+use axum::http::HeaderValue;
+use axum::http::{Request, StatusCode, Uri};
+#[cfg(not(debug_assertions))]
+use axum::http::header::CONTENT_TYPE;
+use axum::response::{IntoResponse, Response};
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::Arc;
+use tower::util::ServiceExt;
 use tokio::net::{TcpListener, UdpSocket};
 use tower_http::services::{ServeDir, ServeFile};
 use tracing::{error, info};
@@ -13,6 +21,77 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use crate::api::network::AppState;
 use crate::dns::CaptivePortalDns;
 use crate::network::NetworkController;
+
+#[cfg(not(debug_assertions))]
+#[derive(rust_embed::RustEmbed)]
+#[folder = "../web/build"]
+struct EmbeddedAssets;
+
+fn static_dir_override() -> Option<String> {
+    std::env::var("STATIC_DIR")
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+}
+
+async fn serve_from_dir(uri: Uri, static_dir: &str) -> Response {
+    let index_file = format!("{}/index.html", static_dir);
+    let service = ServeDir::new(static_dir).not_found_service(ServeFile::new(index_file));
+    let request = Request::builder()
+        .uri(uri)
+        .body(Body::empty())
+        .unwrap_or_else(|_| Request::new(Body::empty()));
+    match service.oneshot(request).await {
+        Ok(res) => res.map(Body::new),
+        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Failed to serve static content").into_response(),
+    }
+}
+
+#[cfg(not(debug_assertions))]
+fn embedded_asset_response(path: &str) -> Response {
+    let requested = path.trim_start_matches('/');
+    let requested = if requested.is_empty() {
+        "index.html"
+    } else {
+        requested
+    };
+
+    let file = EmbeddedAssets::get(requested).or_else(|| EmbeddedAssets::get("index.html"));
+    match file {
+        Some(content) => {
+            let served_path = if EmbeddedAssets::get(requested).is_some() {
+                requested
+            } else {
+                "index.html"
+            };
+            let mime = mime_guess::from_path(served_path).first_or_octet_stream();
+            let mut res = Response::new(Body::from(content.data.into_owned()));
+            res.headers_mut().insert(
+                CONTENT_TYPE,
+                HeaderValue::from_str(mime.essence_str())
+                    .unwrap_or_else(|_| HeaderValue::from_static("application/octet-stream")),
+            );
+            res
+        }
+        None => (StatusCode::NOT_FOUND, "Asset not found").into_response(),
+    }
+}
+
+async fn static_fallback(uri: Uri) -> Response {
+    if let Some(static_dir) = static_dir_override() {
+        return serve_from_dir(uri, &static_dir).await;
+    }
+
+    #[cfg(debug_assertions)]
+    {
+        serve_from_dir(uri, "web/build").await
+    }
+
+    #[cfg(not(debug_assertions))]
+    {
+        embedded_asset_response(uri.path())
+    }
+}
 
 #[tokio::main]
 async fn main() {
@@ -70,16 +149,18 @@ async fn main() {
         network: network_controller,
     };
 
-    let static_dir = std::env::var("STATIC_DIR").unwrap_or_else(|_| "web/build".into());
-    let index_file = format!("{}/index.html", static_dir);
-
-    info!("Serving static files from {}", static_dir);
-    let serve_dir = ServeDir::new(&static_dir).not_found_service(ServeFile::new(&index_file));
+    if let Some(static_dir) = static_dir_override() {
+        info!("Serving static files from {}", static_dir);
+    } else if cfg!(debug_assertions) {
+        info!("Serving static files from web/build (debug fallback)");
+    } else {
+        info!("Serving embedded static files from binary");
+    }
 
     // Build our application with routes
     let app = Router::new()
         .nest("/api/network", api::network::router())
-        .fallback_service(serve_dir)
+        .fallback(static_fallback)
         .with_state(state);
 
     // Run our app with hyper, listening globally on port 3000

@@ -1,18 +1,25 @@
 use crate::network::types::{
-    AccessPointStatus, ConnectionState, Connectivity, EthernetNetwork, IpMethod, NetworkSettings, SavedNetwork,
-    WifiNetwork,
+    AccessPointStatus, ConnectionState, Connectivity, EthernetNetwork, IpMethod, NetworkSettings, NetworkTransport,
+    SavedNetwork, WifiNetwork,
 };
 use crate::network::{NetworkController, NetworkError, Result as NetResult};
 use async_trait::async_trait;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::process::Command;
 use tokio::sync::Mutex;
-use tracing::{error, info};
+use tracing::info;
 use uuid::Uuid;
 
+#[derive(Clone)]
+struct TestRecord {
+    state: ConnectionState,
+    settings: NetworkSettings,
+    transport: NetworkTransport,
+}
+
 pub struct NmcliNetworkController {
-    active_tests: Arc<Mutex<HashMap<Uuid, ConnectionState>>>,
+    active_tests: Arc<Mutex<HashMap<Uuid, TestRecord>>>,
 }
 
 impl NmcliNetworkController {
@@ -73,7 +80,8 @@ pub fn parse_scan_output(stdout: &str) -> Vec<WifiNetwork> {
     }
 
     networks.sort_by(|a, b| b.signal_strength.cmp(&a.signal_strength));
-    networks.dedup_by(|a, b| a.ssid == b.ssid);
+    let mut seen = HashSet::new();
+    networks.retain(|n| seen.insert(n.ssid.clone()));
 
     networks
 }
@@ -84,10 +92,17 @@ pub fn parse_saved_output(stdout: &str) -> Vec<SavedNetwork> {
     for line in stdout.lines() {
         let fields = parse_nmcli_terse_line(line);
         // We requested: UUID,NAME,TYPE
-        if fields.len() >= 3 && fields[2] == "802-11-wireless" {
+        if fields.len() >= 3 {
+            let transport = match fields[2].as_str() {
+                "802-11-wireless" => NetworkTransport::Wifi,
+                "802-3-ethernet" => NetworkTransport::Ethernet,
+                _ => continue,
+            };
             saved.push(SavedNetwork {
                 id: fields[0].clone(),
-                ssid: fields[1].clone(),
+                transport,
+                display_name: fields[1].clone(),
+                managed: true,
             });
         }
     }
@@ -184,6 +199,74 @@ fn build_nmcli_connection_args(settings: &NetworkSettings, is_wifi: bool) -> Vec
     args
 }
 
+async fn run_nmcli_test(settings: &NetworkSettings, transport: &NetworkTransport) -> NetResult<()> {
+    match transport {
+        NetworkTransport::Wifi => {
+            if let Some(ssid) = &settings.ssid {
+                let _ = Command::new("nmcli")
+                    .args(["connection", "delete", ssid])
+                    .output()
+                    .await;
+            }
+
+            let args = build_nmcli_connection_args(settings, true);
+            let add_out = Command::new("nmcli")
+                .args(args)
+                .output()
+                .await
+                .map_err(|e| NetworkError::ConnectionFailed(e.to_string()))?;
+            if !add_out.status.success() {
+                return Err(NetworkError::ConnectionFailed(
+                    String::from_utf8_lossy(&add_out.stderr).to_string(),
+                ));
+            }
+
+            let ssid = settings.ssid.clone().unwrap_or_default();
+            let up_out = Command::new("nmcli")
+                .args(["connection", "up", &ssid])
+                .output()
+                .await
+                .map_err(|e| NetworkError::ConnectionFailed(e.to_string()))?;
+            if !up_out.status.success() {
+                return Err(NetworkError::ConnectionFailed(
+                    String::from_utf8_lossy(&up_out.stderr).to_string(),
+                ));
+            }
+        }
+        NetworkTransport::Ethernet => {
+            let _ = Command::new("nmcli")
+                .args(["connection", "delete", "Wired connection"])
+                .output()
+                .await;
+
+            let args = build_nmcli_connection_args(settings, false);
+            let add_out = Command::new("nmcli")
+                .args(args)
+                .output()
+                .await
+                .map_err(|e| NetworkError::ConnectionFailed(e.to_string()))?;
+            if !add_out.status.success() {
+                return Err(NetworkError::ConnectionFailed(
+                    String::from_utf8_lossy(&add_out.stderr).to_string(),
+                ));
+            }
+
+            let up_out = Command::new("nmcli")
+                .args(["connection", "up", "Wired connection"])
+                .output()
+                .await
+                .map_err(|e| NetworkError::ConnectionFailed(e.to_string()))?;
+            if !up_out.status.success() {
+                return Err(NetworkError::ConnectionFailed(
+                    String::from_utf8_lossy(&up_out.stderr).to_string(),
+                ));
+            }
+        }
+    }
+
+    Ok(())
+}
+
 #[async_trait]
 impl NetworkController for NmcliNetworkController {
     async fn scan_wifi(&self) -> NetResult<Vec<WifiNetwork>> {
@@ -258,82 +341,62 @@ impl NetworkController for NmcliNetworkController {
         Ok(parse_saved_output(&stdout))
     }
 
-    async fn connect_wifi(&self, settings: NetworkSettings) -> NetResult<Uuid> {
+    async fn start_wifi_test(&self, settings: NetworkSettings) -> NetResult<Uuid> {
         let test_id = Uuid::new_v4();
-        let mut tests = self.active_tests.lock().await;
-        tests.insert(test_id, ConnectionState::Testing);
-        drop(tests);
+        {
+            let mut tests = self.active_tests.lock().await;
+            tests.insert(
+                test_id,
+                TestRecord {
+                    state: ConnectionState::Testing,
+                    settings: settings.clone(),
+                    transport: NetworkTransport::Wifi,
+                },
+            );
+        }
 
         let active_tests = self.active_tests.clone();
-        
+
         tokio::spawn(async move {
+            let state = match run_nmcli_test(&settings, &NetworkTransport::Wifi).await {
+                Ok(()) => ConnectionState::Connected,
+                Err(NetworkError::ConnectionFailed(msg)) => ConnectionState::Failed(msg),
+                Err(e) => ConnectionState::Failed(e.to_string()),
+            };
             let mut tests = active_tests.lock().await;
-            
-            // We can delete existing connections with same SSID to avoid clutter
-            if let Some(ssid) = &settings.ssid {
-                let _ = Command::new("nmcli").args(&["connection", "delete", ssid]).output().await;
-            }
-
-            let args = build_nmcli_connection_args(&settings, true);
-            let output = Command::new("nmcli").args(&args).output().await;
-
-            match output {
-                Ok(out) if out.status.success() => {
-                    // Activate it
-                    let ssid = settings.ssid.unwrap_or_default();
-                    let act_out = Command::new("nmcli").args(&["connection", "up", &ssid]).output().await;
-                    if act_out.map(|o| o.status.success()).unwrap_or(false) {
-                        tests.insert(test_id, ConnectionState::Connected);
-                    } else {
-                        tests.insert(test_id, ConnectionState::Failed("Failed to bring up connection".into()));
-                    }
-                }
-                Ok(out) => {
-                    let err = String::from_utf8_lossy(&out.stderr).to_string();
-                    tests.insert(test_id, ConnectionState::Failed(err));
-                }
-                Err(e) => {
-                    tests.insert(test_id, ConnectionState::Failed(e.to_string()));
-                }
+            if let Some(record) = tests.get_mut(&test_id) {
+                record.state = state;
             }
         });
 
         Ok(test_id)
     }
 
-    async fn connect_ethernet(&self, settings: NetworkSettings) -> NetResult<Uuid> {
+    async fn start_ethernet_test(&self, settings: NetworkSettings) -> NetResult<Uuid> {
         let test_id = Uuid::new_v4();
-        let mut tests = self.active_tests.lock().await;
-        tests.insert(test_id, ConnectionState::Testing);
-        drop(tests);
+        {
+            let mut tests = self.active_tests.lock().await;
+            tests.insert(
+                test_id,
+                TestRecord {
+                    state: ConnectionState::Testing,
+                    settings: settings.clone(),
+                    transport: NetworkTransport::Ethernet,
+                },
+            );
+        }
 
         let active_tests = self.active_tests.clone();
-        
+
         tokio::spawn(async move {
+            let state = match run_nmcli_test(&settings, &NetworkTransport::Ethernet).await {
+                Ok(()) => ConnectionState::Connected,
+                Err(NetworkError::ConnectionFailed(msg)) => ConnectionState::Failed(msg),
+                Err(e) => ConnectionState::Failed(e.to_string()),
+            };
             let mut tests = active_tests.lock().await;
-            
-            // Delete existing ethernet connection to avoid duplicate "Wired connection 1" etc.
-            let _ = Command::new("nmcli").args(&["connection", "delete", "Wired connection"]).output().await;
-
-            let args = build_nmcli_connection_args(&settings, false);
-            let output = Command::new("nmcli").args(&args).output().await;
-
-            match output {
-                Ok(out) if out.status.success() => {
-                    let act_out = Command::new("nmcli").args(&["connection", "up", "Wired connection"]).output().await;
-                    if act_out.map(|o| o.status.success()).unwrap_or(false) {
-                        tests.insert(test_id, ConnectionState::Connected);
-                    } else {
-                        tests.insert(test_id, ConnectionState::Failed("Failed to bring up connection".into()));
-                    }
-                }
-                Ok(out) => {
-                    let err = String::from_utf8_lossy(&out.stderr).to_string();
-                    tests.insert(test_id, ConnectionState::Failed(err));
-                }
-                Err(e) => {
-                    tests.insert(test_id, ConnectionState::Failed(e.to_string()));
-                }
+            if let Some(record) = tests.get_mut(&test_id) {
+                record.state = state;
             }
         });
 
@@ -342,11 +405,66 @@ impl NetworkController for NmcliNetworkController {
 
     async fn connection_status(&self, test_id: Uuid) -> NetResult<ConnectionState> {
         let tests = self.active_tests.lock().await;
-        if let Some(state) = tests.get(&test_id) {
-            Ok(state.clone())
-        } else {
-            Err(NetworkError::NotFound("Test ID not found".into()))
+        tests
+            .get(&test_id)
+            .map(|record| record.state.clone())
+            .ok_or_else(|| NetworkError::NotFound("Test ID not found".into()))
+    }
+
+    async fn save_test(&self, test_id: Uuid) -> NetResult<()> {
+        let record = {
+            let tests = self.active_tests.lock().await;
+            tests
+                .get(&test_id)
+                .cloned()
+                .ok_or_else(|| NetworkError::NotFound("Test ID not found".into()))?
+        };
+
+        if record.state != ConnectionState::Connected {
+            return Err(NetworkError::ConnectionFailed(
+                "Cannot save an unsuccessful test".into(),
+            ));
         }
+
+        match record.transport {
+            NetworkTransport::Wifi => {
+                let Some(ssid) = &record.settings.ssid else {
+                    return Err(NetworkError::ConnectionFailed("Missing SSID for Wi-Fi test".into()));
+                };
+                let output = Command::new("nmcli")
+                    .args(["connection", "up", ssid])
+                    .output()
+                    .await
+                    .map_err(|e| NetworkError::Internal(e.to_string()))?;
+                if !output.status.success() {
+                    return Err(NetworkError::ConnectionFailed(
+                        String::from_utf8_lossy(&output.stderr).to_string(),
+                    ));
+                }
+            }
+            NetworkTransport::Ethernet => {
+                let output = Command::new("nmcli")
+                    .args(["connection", "up", "Wired connection"])
+                    .output()
+                    .await
+                    .map_err(|e| NetworkError::Internal(e.to_string()))?;
+                if !output.status.success() {
+                    return Err(NetworkError::ConnectionFailed(
+                        String::from_utf8_lossy(&output.stderr).to_string(),
+                    ));
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn discard_test(&self, test_id: Uuid) -> NetResult<()> {
+        let mut tests = self.active_tests.lock().await;
+        tests
+            .remove(&test_id)
+            .map(|_| ())
+            .ok_or_else(|| NetworkError::NotFound("Test ID not found".into()))
     }
 
     async fn forget_network(&self, id: &str) -> NetResult<()> {
