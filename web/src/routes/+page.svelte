@@ -15,6 +15,8 @@
   let error = '';
   let deletingId = '';
   let deleteError = '';
+  let hasInternet = false;
+  let connectivityKnown = false;
 
   async function loadSaved() {
     loading = true;
@@ -26,6 +28,22 @@
     } finally {
       loading = false;
     }
+  }
+
+  async function loadConnectivityHint() {
+    try {
+      const connectivity = await networkApi.getConnectivity();
+      hasInternet = connectivity.is_connected && connectivity.can_reach_host;
+      connectivityKnown = true;
+    } catch {
+      hasInternet = false;
+      connectivityKnown = false;
+    }
+  }
+
+  function refreshHome() {
+    void loadSaved();
+    void loadConnectivityHint();
   }
 
   async function deleteSaved(id: string) {
@@ -42,7 +60,7 @@
   }
 
   onMount(() => {
-    void loadSaved();
+    refreshHome();
   });
 </script>
 
@@ -67,7 +85,13 @@
     {:else if deleteError}
       <Alert tone="error">{deleteError}</Alert>
     {:else if saved.length === 0}
-      <Alert tone="info">No managed network is configured yet.</Alert>
+      {#if connectivityKnown && hasInternet}
+        <Alert tone="info">
+          Device is already online using automatic network settings (DHCP). You do not need to configure anything unless you want to override network behavior.
+        </Alert>
+      {:else}
+        <Alert tone="info">No managed network is configured yet.</Alert>
+      {/if}
     {:else}
       {#each saved as entry}
         <div class="rounded-md border border-border bg-white p-3">
@@ -122,7 +146,7 @@
       <span class="mr-2 inline-flex items-center"><Icon name="settings" /></span>
       Settings
     </Button>
-    <Button variant="secondary" onclick={loadSaved} loading={loading}>
+    <Button variant="secondary" onclick={refreshHome} loading={loading}>
       {#if !loading}
         <span class="mr-2 inline-flex items-center"><Icon name="refresh" /></span>
       {/if}

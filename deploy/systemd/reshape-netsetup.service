@@ -11,6 +11,7 @@ Environment=RUST_LOG=info
 Environment=DNS_PORT=10053
 Environment=AP_IFACE=wlan0
 Environment=CAPTIVE_IP=10.42.0.1
+Environment=CONNECTIVITY_PROBE_TARGET=1.1.1.1
 WorkingDirectory=/opt/reshape-netsetup
 ExecStartPre=/usr/local/bin/captive-portal-rules.sh up
 ExecStart=/opt/reshape-netsetup/reshape-netsetup

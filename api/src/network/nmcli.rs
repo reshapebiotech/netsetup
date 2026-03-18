@@ -53,8 +53,7 @@ impl NmcliNetworkController {
             hotspot_name: Self::resolve_hotspot_name(),
             hotspot_password: std::env::var("DEVICE_AP_PASSWORD")
                 .unwrap_or_else(|_| "reshape123".to_string()),
-            probe_host: std::env::var("CONNECTIVITY_PROBE_HOST")
-                .unwrap_or_else(|_| "1.1.1.1".to_string()),
+            probe_host: Self::resolve_probe_host(),
         }
     }
 
@@ -78,6 +77,13 @@ impl NmcliNetworkController {
         "reshape-device".to_string()
     }
 
+    fn resolve_probe_host() -> String {
+        let raw = std::env::var("CONNECTIVITY_PROBE_TARGET")
+            .or_else(|_| std::env::var("CONNECTIVITY_PROBE_HOST"))
+            .unwrap_or_else(|_| "1.1.1.1".to_string());
+        probe_target_to_host(&raw).unwrap_or_else(|| "1.1.1.1".to_string())
+    }
+
     async fn run_supervisor_tick(&self) {
         let test_in_progress = {
             let tests = self.active_tests.lock().await;
@@ -91,7 +97,13 @@ impl NmcliNetworkController {
             state.save_in_progress
         };
 
-        let current_enabled = self.is_hotspot_enabled().await.unwrap_or(false);
+        let current_enabled = match self.is_hotspot_enabled().await {
+            Ok(v) => v,
+            Err(e) => {
+                warn!("AP supervisor could not determine hotspot state: {e}");
+                false
+            }
+        };
 
         let mut ethernet_connected = false;
         let mut uplink_healthy = false;
@@ -124,6 +136,17 @@ impl NmcliNetworkController {
         };
 
         if let Some(action) = decision.action {
+            info!(
+                ?action,
+                test_in_progress,
+                save_in_progress,
+                ethernet_connected,
+                uplink_healthy,
+                hotspot_enabled = current_enabled,
+                persistent_enabled = decision.persistent_enabled,
+                reason = %decision.last_reason,
+                "AP supervisor issued action"
+            );
             let result = match action {
                 SupervisorAction::Enable => {
                     self.start_hotspot(&self.hotspot_name, &self.hotspot_password)
@@ -226,11 +249,12 @@ impl NmcliNetworkController {
     async fn is_hotspot_enabled(&self) -> NetResult<bool> {
         let output = Command::new("nmcli")
             .args([
-                "-g",
-                "GENERAL.STATE",
+                "-t",
+                "-f",
+                "NAME,TYPE",
                 "connection",
                 "show",
-                &self.hotspot_name,
+                "--active",
             ])
             .output()
             .await
@@ -246,8 +270,11 @@ impl NmcliNetworkController {
             ));
         }
 
-        let state = String::from_utf8_lossy(&output.stdout);
-        Ok(hotspot_state_is_enabled(&state))
+        let active_connections = String::from_utf8_lossy(&output.stdout);
+        Ok(hotspot_is_active_in_list(
+            &active_connections,
+            &self.hotspot_name,
+        ))
     }
 
     async fn ethernet_connected(&self) -> NetResult<bool> {
@@ -383,6 +410,49 @@ fn stderr_indicates_missing_connection(stderr: &str) -> bool {
 fn hotspot_state_is_enabled(state_stdout: &str) -> bool {
     let normalized = state_stdout.trim().to_lowercase();
     normalized == "activated" || normalized.ends_with(": activated")
+}
+
+fn hotspot_is_active_in_list(active_stdout: &str, hotspot_name: &str) -> bool {
+    active_stdout.lines().any(|line| {
+        let fields = parse_nmcli_terse_line(line);
+        fields.len() >= 2
+            && fields[0] == hotspot_name
+            && fields[1] == "802-11-wireless"
+    })
+}
+
+fn probe_target_to_host(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    if let Some((_, rest)) = trimmed.split_once("://") {
+        let authority = rest
+            .split('/')
+            .next()
+            .unwrap_or_default()
+            .split('?')
+            .next()
+            .unwrap_or_default()
+            .split('#')
+            .next()
+            .unwrap_or_default();
+        let host = authority
+            .trim_start_matches('[')
+            .trim_end_matches(']')
+            .split(':')
+            .next()
+            .unwrap_or_default()
+            .trim();
+        if host.is_empty() {
+            None
+        } else {
+            Some(host.to_string())
+        }
+    } else {
+        Some(trimmed.to_string())
+    }
 }
 
 async fn is_physical_interface(device: &str) -> bool {
@@ -906,6 +976,8 @@ impl NetworkController for NmcliNetworkController {
             "ap".to_string(),
             "802-11-wireless.band".to_string(),
             "bg".to_string(),
+            "802-11-wireless.channel".to_string(),
+            "6".to_string(),
             "ipv4.method".to_string(),
             "shared".to_string(),
         ];
@@ -1063,7 +1135,10 @@ impl NetworkController for NmcliNetworkController {
 
 #[cfg(test)]
 mod nmcli_unit_tests {
-    use super::{hotspot_state_is_enabled, stderr_indicates_missing_connection};
+    use super::{
+        hotspot_is_active_in_list, hotspot_state_is_enabled, probe_target_to_host,
+        stderr_indicates_missing_connection,
+    };
 
     #[test]
     fn hotspot_state_enabled_only_when_activated() {
@@ -1082,5 +1157,30 @@ mod nmcli_unit_tests {
         assert!(stderr_indicates_missing_connection("unknown connection"));
         assert!(stderr_indicates_missing_connection("not found"));
         assert!(!stderr_indicates_missing_connection("permission denied"));
+    }
+
+    #[test]
+    fn hotspot_active_list_detects_active_profile() {
+        let stdout = "RIS0440:802-11-wireless\nWired connection 1:802-3-ethernet\n";
+        assert!(hotspot_is_active_in_list(stdout, "RIS0440"));
+    }
+
+    #[test]
+    fn hotspot_active_list_ignores_non_active_or_non_wifi_profiles() {
+        let stdout = "RIS0440:802-3-ethernet\n";
+        assert!(!hotspot_is_active_in_list(stdout, "RIS0440"));
+    }
+
+    #[test]
+    fn probe_target_accepts_url_or_host() {
+        assert_eq!(
+            probe_target_to_host("https://ris-api.reshapebiotech.com"),
+            Some("ris-api.reshapebiotech.com".to_string())
+        );
+        assert_eq!(
+            probe_target_to_host("ris-api.reshapebiotech.com"),
+            Some("ris-api.reshapebiotech.com".to_string())
+        );
+        assert_eq!(probe_target_to_host(""), None);
     }
 }

@@ -3,7 +3,7 @@ set shell := ["bash", "-cu"]
 dev:
 	@echo "Starting API (mock) on :3000 and web on :5173"
 	@trap 'kill 0' EXIT INT TERM; \
-	BRANDING_CONFIG_PATH=deploy/branding.reshape.toml MOCK_NETWORK=1 cargo run -p api --bin reshape-netsetup & \
+	BRANDING_CONFIG_PATH=deploy/branding.reshape.toml CONNECTIVITY_PROBE_TARGET=https://ris-api.reshapebiotech.com MOCK_NETWORK=1 cargo run -p api --bin reshape-netsetup & \
 	cd web && bun run dev & \
 	wait
 

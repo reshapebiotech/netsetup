@@ -43,6 +43,14 @@ Run API tests:
 cargo test -p api --bin reshape-netsetup
 ```
 
+Run deeper local property-test sessions:
+
+```sh
+PROPTEST_CASES=5000 PROPTEST_MAX_SHRINK_ITERS=20000 cargo test -p api --bin reshape-netsetup network::ap_supervisor -- --nocapture
+```
+
+Regression seeds for proptest are kept in `proptest-regressions/`.
+
 Run web checks + unit tests:
 
 ```sh
@@ -105,6 +113,7 @@ The default unit uses:
 - `AP_IFACE=wlan0`
 - `DNS_PORT=10053`
 - `CAPTIVE_IP=10.42.0.1`
+- `CONNECTIVITY_PROBE_TARGET=1.1.1.1` (host or URL used for internet reachability checks, e.g. `https://ris-api.reshapebiotech.com`)
 
 Adjust in `deploy/systemd/reshape-netsetup.service` if needed, then:
 
