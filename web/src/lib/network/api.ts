@@ -16,6 +16,10 @@ interface ConnectResponse {
   test_id: string;
 }
 
+const TIMEOUT_FAST_MS = 4_000;
+const TIMEOUT_DEFAULT_MS = 12_000;
+const TIMEOUT_SLOW_MS = 20_000;
+
 async function parseOrThrow(res: Response) {
   if (!res.ok) {
     let message = `Request failed (${res.status})`;
@@ -30,7 +34,11 @@ async function parseOrThrow(res: Response) {
   return res;
 }
 
-async function withTimeout(input: RequestInfo | URL, init?: RequestInit, timeoutMs = 5000) {
+async function withTimeout(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs = TIMEOUT_DEFAULT_MS
+) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
@@ -87,17 +95,21 @@ export const networkApi = {
   },
 
   async getApPreferences(): Promise<AccessPointPreferences> {
-    const res = await withTimeout(api('/access_point/preferences'));
+    const res = await withTimeout(api('/access_point/preferences'), undefined, TIMEOUT_SLOW_MS);
     await parseOrThrow(res);
     return res.json();
   },
 
   async setApPreferences(prefs: AccessPointPreferences): Promise<void> {
-    const res = await withTimeout(api('/access_point/preferences'), {
-      method: 'PUT',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(prefs)
-    });
+    const res = await withTimeout(
+      api('/access_point/preferences'),
+      {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(prefs)
+      },
+      TIMEOUT_SLOW_MS
+    );
     await parseOrThrow(res);
   },
 
@@ -109,24 +121,28 @@ export const networkApi = {
 
   async startTest(transport: Transport, settings: NetworkSettings): Promise<string> {
     const endpoint = transport === 'wifi' ? '/wifi/test' : '/ethernet/test';
-    const res = await withTimeout(api(endpoint), {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(settings)
-    });
+    const res = await withTimeout(
+      api(endpoint),
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(settings)
+      },
+      TIMEOUT_SLOW_MS
+    );
     await parseOrThrow(res);
     const payload = (await res.json()) as ConnectResponse;
     return payload.test_id;
   },
 
   async getStatus(testId: string): Promise<ConnectionState> {
-    const res = await withTimeout(api(`/status/${testId}`), undefined, 4000);
+    const res = await withTimeout(api(`/status/${testId}`), undefined, TIMEOUT_FAST_MS);
     await parseOrThrow(res);
     return res.json();
   },
 
   async saveTest(testId: string): Promise<void> {
-    const res = await withTimeout(api(`/tests/${testId}/save`), { method: 'POST' }, 20000);
+    const res = await withTimeout(api(`/tests/${testId}/save`), { method: 'POST' }, TIMEOUT_SLOW_MS);
     await parseOrThrow(res);
   },
 

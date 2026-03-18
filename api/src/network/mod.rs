@@ -1,3 +1,4 @@
+mod ap_supervisor;
 pub mod mock;
 pub mod nmcli;
 pub mod types;

@@ -1,3 +1,4 @@
+use crate::network::ap_supervisor::{ApSupervisorMachine, SupervisorAction, SupervisorInput};
 use crate::network::types::{
     AccessPointControllerStatus, AccessPointPreferences, AccessPointStatus, ConnectionState,
     Connectivity, EthernetNetwork, IpMethod, NetworkMacAddresses, NetworkSettings,
@@ -24,10 +25,8 @@ struct TestRecord {
 
 #[derive(Clone)]
 struct ApSupervisorState {
-    persistent_enabled: bool,
-    automation_paused: bool,
     save_in_progress: bool,
-    last_reason: String,
+    machine: ApSupervisorMachine,
 }
 
 const MANAGED_WIFI_PROFILE: &str = "reshape-managed-wifi";
@@ -47,10 +46,8 @@ impl NmcliNetworkController {
         Self {
             active_tests: Arc::new(Mutex::new(HashMap::new())),
             ap_state: Arc::new(Mutex::new(ApSupervisorState {
-                persistent_enabled: false,
-                automation_paused: false,
                 save_in_progress: false,
-                last_reason: "AP supervisor initializing".into(),
+                machine: ApSupervisorMachine::new(),
             })),
             supervisor_started: Arc::new(AtomicBool::new(false)),
             hotspot_name: Self::resolve_hotspot_name(),
@@ -89,62 +86,58 @@ impl NmcliNetworkController {
                 .any(|record| record.state == ConnectionState::Testing)
         };
 
-        let (persistent_enabled, save_in_progress) = {
+        let save_in_progress = {
             let state = self.ap_state.lock().await;
-            (state.persistent_enabled, state.save_in_progress)
-        };
-
-        if test_in_progress || save_in_progress {
-            let mut state = self.ap_state.lock().await;
-            state.automation_paused = true;
-            state.last_reason = "AP automation paused during connection transition".into();
-            return;
-        }
-
-        let connectivity = match self.current_connectivity().await {
-            Ok(value) => value,
-            Err(e) => {
-                warn!("Failed to fetch connectivity for AP supervisor: {e}");
-                Connectivity {
-                    is_connected: false,
-                    can_reach_host: false,
-                }
-            }
-        };
-
-        let ethernet_connected = self.ethernet_connected().await.unwrap_or(false);
-        let should_enable = if persistent_enabled && ethernet_connected {
-            true
-        } else {
-            !connectivity.is_connected || !connectivity.can_reach_host
-        };
-
-        let reason = if persistent_enabled && ethernet_connected {
-            "Persistent AP enabled in Ethernet mode"
-        } else if should_enable {
-            "No healthy uplink detected"
-        } else {
-            "Healthy uplink detected"
+            state.save_in_progress
         };
 
         let current_enabled = self.is_hotspot_enabled().await.unwrap_or(false);
-        if should_enable && !current_enabled {
-            if let Err(e) = self
-                .start_hotspot(&self.hotspot_name, &self.hotspot_password)
-                .await
-            {
-                error!("Failed to enable setup AP: {e}");
-            }
-        }
-        if !should_enable && current_enabled {
-            if let Err(e) = self.stop_hotspot(&self.hotspot_name).await {
-                error!("Failed to disable setup AP: {e}");
-            }
+
+        let mut ethernet_connected = false;
+        let mut uplink_healthy = false;
+
+        if !(test_in_progress || save_in_progress) {
+            ethernet_connected = self.ethernet_connected().await.unwrap_or(false);
+
+            let connectivity = match self.current_connectivity().await {
+                Ok(value) => value,
+                Err(e) => {
+                    warn!("Failed to fetch connectivity for AP supervisor: {e}");
+                    Connectivity {
+                        is_connected: false,
+                        can_reach_host: false,
+                    }
+                }
+            };
+            uplink_healthy = connectivity.is_connected && connectivity.can_reach_host;
         }
 
-        let mut state = self.ap_state.lock().await;
-        state.automation_paused = false;
-        state.last_reason = reason.into();
+        let decision = {
+            let mut state = self.ap_state.lock().await;
+            state.machine.step(SupervisorInput {
+                test_in_progress,
+                save_in_progress,
+                ethernet_connected,
+                uplink_healthy,
+                hotspot_enabled: current_enabled,
+            })
+        };
+
+        if let Some(action) = decision.action {
+            let result = match action {
+                SupervisorAction::Enable => {
+                    self.start_hotspot(&self.hotspot_name, &self.hotspot_password)
+                        .await
+                }
+                SupervisorAction::Disable => self.stop_hotspot(&self.hotspot_name).await,
+            };
+
+            if let Err(e) = result {
+                error!("AP supervisor action failed: {e}");
+                let mut state = self.ap_state.lock().await;
+                state.machine.note_action_error(action, &e.to_string());
+            }
+        }
     }
 
     async fn cleanup_hostname_ap_duplicates(&self) -> NetResult<()> {
@@ -232,22 +225,29 @@ impl NmcliNetworkController {
 
     async fn is_hotspot_enabled(&self) -> NetResult<bool> {
         let output = Command::new("nmcli")
-            .args(["-t", "-f", "NAME,TYPE", "connection", "show", "--active"])
+            .args([
+                "-g",
+                "GENERAL.STATE",
+                "connection",
+                "show",
+                &self.hotspot_name,
+            ])
             .output()
             .await
             .map_err(|e| NetworkError::Internal(e.to_string()))?;
 
         if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            if stderr_indicates_missing_connection(&stderr) {
+                return Ok(false);
+            }
             return Err(NetworkError::Internal(
                 String::from_utf8_lossy(&output.stderr).to_string(),
             ));
         }
 
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        Ok(stdout.lines().any(|line| {
-            let fields = parse_nmcli_terse_line(line);
-            fields.len() >= 2 && fields[0] == self.hotspot_name
-        }))
+        let state = String::from_utf8_lossy(&output.stdout);
+        Ok(hotspot_state_is_enabled(&state))
     }
 
     async fn ethernet_connected(&self) -> NetResult<bool> {
@@ -307,12 +307,8 @@ impl NmcliNetworkController {
             .map_err(|e| NetworkError::Internal(e.to_string()))?;
 
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr).to_lowercase();
-            if stderr.contains("not found")
-                || stderr.contains("unknown")
-                || stderr.contains("no such connection profile")
-                || stderr.contains("no such connection")
-            {
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            if stderr_indicates_missing_connection(&stderr) {
                 return Ok(None);
             }
             return Err(NetworkError::Internal(
@@ -374,6 +370,19 @@ fn parse_nmcli_terse_line(line: &str) -> Vec<String> {
 
     fields.push(current);
     fields
+}
+
+fn stderr_indicates_missing_connection(stderr: &str) -> bool {
+    let lower = stderr.to_lowercase();
+    lower.contains("not found")
+        || lower.contains("unknown")
+        || lower.contains("no such connection profile")
+        || lower.contains("no such connection")
+}
+
+fn hotspot_state_is_enabled(state_stdout: &str) -> bool {
+    let normalized = state_stdout.trim().to_lowercase();
+    normalized == "activated" || normalized.ends_with(": activated")
 }
 
 async fn is_physical_interface(device: &str) -> bool {
@@ -953,13 +962,25 @@ impl NetworkController for NmcliNetworkController {
 
     async fn get_ap_controller_status(&self) -> NetResult<AccessPointControllerStatus> {
         self.ensure_supervisor_started().await;
+        let test_in_progress = {
+            let tests = self.active_tests.lock().await;
+            tests
+                .values()
+                .any(|record| record.state == ConnectionState::Testing)
+        };
         let state = self.ap_state.lock().await.clone();
         let is_enabled = self.is_hotspot_enabled().await.unwrap_or(false);
+        let automation_paused = test_in_progress || state.save_in_progress;
+        let last_reason = if automation_paused {
+            "AP automation paused during connection transition".to_string()
+        } else {
+            state.machine.last_reason().to_string()
+        };
         Ok(AccessPointControllerStatus {
             is_enabled,
-            persistent_enabled: state.persistent_enabled,
-            automation_paused: state.automation_paused,
-            last_reason: state.last_reason,
+            persistent_enabled: state.machine.persistent_enabled(),
+            automation_paused,
+            last_reason,
         })
     }
 
@@ -967,7 +988,7 @@ impl NetworkController for NmcliNetworkController {
         self.ensure_supervisor_started().await;
         let state = self.ap_state.lock().await;
         Ok(AccessPointPreferences {
-            persistent_enabled: state.persistent_enabled,
+            persistent_enabled: state.machine.persistent_enabled(),
         })
     }
 
@@ -976,12 +997,9 @@ impl NetworkController for NmcliNetworkController {
 
         {
             let mut state = self.ap_state.lock().await;
-            state.persistent_enabled = prefs.persistent_enabled;
-            state.last_reason = if prefs.persistent_enabled {
-                "Persistent AP enabled by user".into()
-            } else {
-                "Persistent AP disabled by user".into()
-            };
+            state
+                .machine
+                .set_persistent_enabled(prefs.persistent_enabled);
         }
 
         self.run_supervisor_tick().await;
@@ -1040,5 +1058,29 @@ impl NetworkController for NmcliNetworkController {
         ethernet.dedup();
 
         Ok(NetworkMacAddresses { wifi, ethernet })
+    }
+}
+
+#[cfg(test)]
+mod nmcli_unit_tests {
+    use super::{hotspot_state_is_enabled, stderr_indicates_missing_connection};
+
+    #[test]
+    fn hotspot_state_enabled_only_when_activated() {
+        assert!(hotspot_state_is_enabled("activated"));
+        assert!(hotspot_state_is_enabled("GENERAL.STATE: activated"));
+        assert!(!hotspot_state_is_enabled("deactivated"));
+        assert!(!hotspot_state_is_enabled("activating"));
+        assert!(!hotspot_state_is_enabled(""));
+    }
+
+    #[test]
+    fn missing_connection_errors_are_detected() {
+        assert!(stderr_indicates_missing_connection(
+            "Error: no such connection profile."
+        ));
+        assert!(stderr_indicates_missing_connection("unknown connection"));
+        assert!(stderr_indicates_missing_connection("not found"));
+        assert!(!stderr_indicates_missing_connection("permission denied"));
     }
 }

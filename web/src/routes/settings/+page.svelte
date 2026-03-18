@@ -95,10 +95,31 @@
       <Alert tone="info">{apSavedMessage}</Alert>
     {/if}
 
-    <label class="flex items-center gap-2 text-sm">
-      <input type="checkbox" bind:checked={apPersistent} class="rounded border-input" disabled={apLoading || apSaving} />
-      Keep setup Wi-Fi available in Ethernet mode
-    </label>
+    <div class="flex items-center justify-between gap-3 rounded-md border border-border bg-white p-3">
+      <div class="space-y-1">
+        <p class="text-sm font-medium">Keep setup Wi-Fi available in Ethernet mode</p>
+        <p class="text-xs text-muted-foreground">
+          Status: {apPersistent ? 'On' : 'Off'}
+        </p>
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={apPersistent}
+        aria-label="Toggle persistent setup Wi-Fi"
+        disabled={apLoading || apSaving}
+        on:click={() => (apPersistent = !apPersistent)}
+        class={`relative inline-flex h-7 w-12 items-center rounded-full transition ${
+          apPersistent ? 'bg-primary' : 'bg-muted'
+        } disabled:cursor-not-allowed disabled:opacity-60`}
+      >
+        <span
+          class={`inline-block h-5 w-5 transform rounded-full bg-white transition ${
+            apPersistent ? 'translate-x-6' : 'translate-x-1'
+          }`}
+        ></span>
+      </button>
+    </div>
 
     <div class="flex items-center gap-3">
       <Button variant="secondary" onclick={saveApPreferences} loading={apSaving} disabled={apLoading}>
