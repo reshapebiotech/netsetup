@@ -64,15 +64,17 @@
   });
 </script>
 
-<div class="space-y-6">
-  <header class="space-y-2">
+<div class="space-y-8">
+  <header class="space-y-4">
     <p class="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">{$branding.product_name}</p>
-    <h1 class="text-3xl font-bold">{$branding.headline}</h1>
-    <p class="text-sm text-muted-foreground">{$branding.support_text}</p>
-    <p class="text-sm text-muted-foreground">Pick one managed network profile. Saving a new one replaces the previous profile.</p>
+    <h1 class="text-4xl font-bold leading-tight">{$branding.headline}</h1>
+    <div class="max-w-2xl space-y-2">
+      <p class="text-base text-muted-foreground">Use this tool to bring the device online and manage the network profile used by the device.</p>
+      <p class="text-base text-muted-foreground">{$branding.support_text}</p>
+    </div>
   </header>
 
-  <Card className="space-y-4">
+  <Card className="space-y-5 p-6">
     <h2 class="flex items-center gap-2 text-lg font-semibold">
       <Icon name="network" className="h-5 w-5 text-primary" />
       Configured network
@@ -94,7 +96,7 @@
       {/if}
     {:else}
       {#each saved as entry}
-        <div class="rounded-md border border-border bg-white p-3">
+        <div class="rounded-lg border border-border bg-white p-4">
           <div class="flex items-center justify-between gap-3">
             <div>
               <p class="flex items-center gap-2 text-sm font-semibold">
@@ -118,7 +120,7 @@
   </Card>
 
   {#if $branding.help_links.length > 0}
-    <Card className="space-y-3">
+    <Card className="space-y-4 p-6">
       <h2 class="flex items-center gap-2 text-lg font-semibold">
         <Icon name="help" className="h-5 w-5 text-primary" />
         {$branding.help_title}
@@ -137,7 +139,7 @@
     </Card>
   {/if}
 
-  <div class="flex items-center gap-3">
+  <div class="flex flex-wrap items-center gap-3">
     <Button onclick={() => goto('/setup/new')}>
       <span class="mr-2 inline-flex items-center"><Icon name="plus" /></span>
       Add new network

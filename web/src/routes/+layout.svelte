@@ -11,7 +11,14 @@
   let lastUpdatedAt: Date | null = null;
 
   const statusText: Record<DeviceStatus, string> = {
-    checking: 'Checking device status…',
+    checking: 'Checking status…',
+    online: 'Online',
+    no_internet: 'No internet',
+    disconnected: 'Disconnected'
+  };
+
+  const statusTooltip: Record<DeviceStatus, string> = {
+    checking: 'Checking device status',
     online: 'Connected to device and device has internet',
     no_internet: 'Connected to device and device does not have internet',
     disconnected: 'Disconnected from device. Status unknown'
@@ -59,21 +66,21 @@
 </svelte:head>
 
 <div
-  class="mx-auto min-h-screen w-full max-w-3xl px-4 py-8 sm:px-6 lg:px-8"
+  class="mx-auto min-h-screen w-full max-w-4xl px-4 py-8 sm:px-6 lg:px-10"
   style={$branding.background_path ? `background-image: url(${$branding.background_path}); background-size: cover; background-position: center;` : undefined}
 >
-  <div class="mb-6 flex flex-col gap-3 rounded-md border border-border bg-white/70 p-3 backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+  <div class="mb-8 flex flex-col gap-3 rounded-xl border border-border/80 bg-white/80 p-4 shadow-sm backdrop-blur sm:flex-row sm:items-center sm:justify-between">
     {#if $branding.logo_path}
       <a href="/" aria-label="Back to home" class="shrink-0">
-        <img src={$branding.logo_path} alt="{$branding.product_name} logo" class="h-auto max-h-12 w-auto object-contain" />
+        <img src={$branding.logo_path} alt="{$branding.product_name} logo" class="h-auto max-h-14 w-auto object-contain" />
       </a>
     {/if}
-    <div class={`rounded-md border px-3 py-2 text-sm ${statusClass[deviceStatus]}`}>
-      <p class="flex items-center gap-2 font-medium">
+    <div class={`rounded-lg border px-3 py-2 text-sm sm:max-w-sm ${statusClass[deviceStatus]}`} title={statusTooltip[deviceStatus]}>
+      <p class="flex items-center gap-2 font-medium" title={statusTooltip[deviceStatus]}>
         <Icon name={statusIcon[deviceStatus]} className={deviceStatus === 'checking' ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
         {statusText[deviceStatus]}
       </p>
-      <p class="mt-1 text-xs text-muted-foreground">
+      <p class="mt-0.5 text-[11px] text-muted-foreground">
         Last updated:
         {#if lastUpdatedAt}
           {lastUpdatedAt.toLocaleTimeString()}
