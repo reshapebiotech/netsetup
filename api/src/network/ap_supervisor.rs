@@ -356,12 +356,11 @@ mod tests {
             let mut hotspot_enabled = false;
             let mut ticks_since_action: Option<usize> = None;
             for event in &events {
-                if let Event::Tick { test_in_progress, save_in_progress, .. } = event {
-                    if !(*test_in_progress || *save_in_progress) {
-                        if let Some(value) = ticks_since_action.as_mut() {
-                            *value += 1;
-                        }
-                    }
+                if let Event::Tick { test_in_progress, save_in_progress, .. } = event
+                    && !(*test_in_progress || *save_in_progress)
+                    && let Some(value) = ticks_since_action.as_mut()
+                {
+                    *value += 1;
                 }
                 let action = apply_event(&mut machine, &mut hotspot_enabled, event);
                 if action.is_some() {

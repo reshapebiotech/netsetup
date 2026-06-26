@@ -376,7 +376,13 @@ mod tests {
 
         let initial = server.get("/saved").await;
         initial.assert_status_ok();
-        assert_eq!(initial.json::<serde_json::Value>().as_array().map_or(0, |v| v.len()), 1);
+        assert_eq!(
+            initial
+                .json::<serde_json::Value>()
+                .as_array()
+                .map_or(0, |v| v.len()),
+            1
+        );
 
         server
             .post("/saved/reset")

@@ -65,12 +65,12 @@ impl NmcliNetworkController {
             }
         }
 
-        if let Ok(output) = std::process::Command::new("hostname").output() {
-            if output.status.success() {
-                let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                if !value.is_empty() {
-                    return value;
-                }
+        if let Ok(output) = std::process::Command::new("hostname").output()
+            && output.status.success()
+        {
+            let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !value.is_empty() {
+                return value;
             }
         }
 
@@ -248,14 +248,7 @@ impl NmcliNetworkController {
 
     async fn is_hotspot_enabled(&self) -> NetResult<bool> {
         let output = Command::new("nmcli")
-            .args([
-                "-t",
-                "-f",
-                "NAME,TYPE",
-                "connection",
-                "show",
-                "--active",
-            ])
+            .args(["-t", "-f", "NAME,TYPE", "connection", "show", "--active"])
             .output()
             .await
             .map_err(|e| NetworkError::Internal(e.to_string()))?;
@@ -379,12 +372,12 @@ fn parse_nmcli_terse_line(line: &str) -> Vec<String> {
 
     while let Some(c) = chars.next() {
         if c == '\\' {
-            if let Some(next_c) = chars.peek() {
-                if *next_c == ':' || *next_c == '\\' {
-                    current.push(*next_c);
-                    chars.next();
-                    continue;
-                }
+            if let Some(next_c) = chars.peek()
+                && (*next_c == ':' || *next_c == '\\')
+            {
+                current.push(*next_c);
+                chars.next();
+                continue;
             }
             current.push(c);
         } else if c == ':' {
@@ -407,6 +400,7 @@ fn stderr_indicates_missing_connection(stderr: &str) -> bool {
         || lower.contains("no such connection")
 }
 
+#[cfg(test)]
 fn hotspot_state_is_enabled(state_stdout: &str) -> bool {
     let normalized = state_stdout.trim().to_lowercase();
     normalized == "activated" || normalized.ends_with(": activated")
@@ -415,9 +409,7 @@ fn hotspot_state_is_enabled(state_stdout: &str) -> bool {
 fn hotspot_is_active_in_list(active_stdout: &str, hotspot_name: &str) -> bool {
     active_stdout.lines().any(|line| {
         let fields = parse_nmcli_terse_line(line);
-        fields.len() >= 2
-            && fields[0] == hotspot_name
-            && fields[1] == "802-11-wireless"
+        fields.len() >= 2 && fields[0] == hotspot_name && fields[1] == "802-11-wireless"
     })
 }
 
@@ -543,13 +535,13 @@ fn build_nmcli_connection_args(
             args.push("802-1x.phase2-auth".to_string());
             args.push("mschapv2".to_string());
         }
-    } else if let Some(pwd) = &settings.password {
-        if is_wifi {
-            args.push("wifi-sec.key-mgmt".to_string());
-            args.push("wpa-psk".to_string());
-            args.push("wifi-sec.psk".to_string());
-            args.push(pwd.clone());
-        }
+    } else if let Some(pwd) = &settings.password
+        && is_wifi
+    {
+        args.push("wifi-sec.key-mgmt".to_string());
+        args.push("wpa-psk".to_string());
+        args.push("wifi-sec.psk".to_string());
+        args.push(pwd.clone());
     }
 
     if let Some(ipv4) = &settings.ipv4 {
@@ -574,11 +566,11 @@ fn build_nmcli_connection_args(
                     args.push(gw.clone());
                 }
 
-                if let Some(dns) = &ipv4.dns {
-                    if !dns.is_empty() {
-                        args.push("ipv4.dns".to_string());
-                        args.push(dns.join(","));
-                    }
+                if let Some(dns) = &ipv4.dns
+                    && !dns.is_empty()
+                {
+                    args.push("ipv4.dns".to_string());
+                    args.push(dns.join(","));
                 }
             }
             IpMethod::Auto => {
