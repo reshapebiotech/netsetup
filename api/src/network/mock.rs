@@ -189,6 +189,18 @@ impl NetworkController for MockNetworkController {
         Ok(())
     }
 
+    async fn reset_all_networks(&self) -> NetResult<()> {
+        {
+            let mut saved = self.saved.lock().await;
+            *saved = None;
+        }
+        {
+            let mut tests = self.tests.lock().await;
+            tests.clear();
+        }
+        Ok(())
+    }
+
     async fn get_hotspot_status(&self) -> NetResult<AccessPointStatus> {
         Ok(AccessPointStatus { is_enabled: false })
     }

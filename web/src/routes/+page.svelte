@@ -10,13 +10,17 @@
   import { branding } from '$lib/branding';
   import type { SavedNetwork } from '$lib/network/types';
 
-  let saved: SavedNetwork[] = [];
-  let loading = true;
-  let error = '';
-  let deletingId = '';
-  let deleteError = '';
-  let hasInternet = false;
-  let connectivityKnown = false;
+  let saved = $state<SavedNetwork[]>([]);
+  let loading = $state(true);
+  let error = $state('');
+  let deletingId = $state('');
+  let deleteError = $state('');
+  let hasInternet = $state(false);
+  let connectivityKnown = $state(false);
+  let resetLoading = $state(false);
+  let resetConfirming = $state(false);
+  let resetMessage = $state('');
+  let resetMessageTone = $state<'' | 'info' | 'error'>('');
 
   async function loadSaved() {
     loading = true;
@@ -59,6 +63,36 @@
     }
   }
 
+  function beginResetAll() {
+    resetConfirming = true;
+    resetMessage = '';
+    resetMessageTone = '';
+  }
+
+  function cancelResetAll() {
+    resetConfirming = false;
+  }
+
+  async function confirmResetAll() {
+    resetLoading = true;
+    resetMessage = '';
+    resetMessageTone = '';
+    deleteError = '';
+    try {
+      await networkApi.resetAllSaved();
+      resetConfirming = false;
+      resetMessage = 'All saved networks were reset.';
+      resetMessageTone = 'info';
+      await loadSaved();
+      await loadConnectivityHint();
+    } catch (e) {
+      resetMessage = e instanceof Error ? e.message : 'Failed to reset all saved networks';
+      resetMessageTone = 'error';
+    } finally {
+      resetLoading = false;
+    }
+  }
+
   onMount(() => {
     refreshHome();
   });
@@ -75,10 +109,24 @@
   </header>
 
   <Card className="space-y-5 p-6">
-    <h2 class="flex items-center gap-2 text-lg font-semibold">
-      <Icon name="network" className="h-5 w-5 text-primary" />
-      Configured network
-    </h2>
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <h2 class="flex items-center gap-2 text-lg font-semibold">
+        <Icon name="network" className="h-5 w-5 text-primary" />
+        Configured network
+      </h2>
+
+      <div class="space-y-2 sm:text-right">
+        {#if resetConfirming}
+          <p class="text-xs text-muted-foreground">This removes saved networks and may disconnect this device.</p>
+          <div class="flex flex-wrap items-center gap-2 sm:justify-end">
+            <Button variant="secondary" disabled={resetLoading} onclick={cancelResetAll}>Cancel</Button>
+            <Button variant="destructive" loading={resetLoading} disabled={resetLoading} onclick={confirmResetAll}>Reset all networks</Button>
+          </div>
+        {:else}
+          <Button variant="destructive" disabled={resetLoading} onclick={beginResetAll}>Reset all networks</Button>
+        {/if}
+      </div>
+    </div>
 
     {#if loading}
       <Loading label="Loading configured network…" />
@@ -86,6 +134,10 @@
       <Alert tone="error">{error}</Alert>
     {:else if deleteError}
       <Alert tone="error">{deleteError}</Alert>
+    {:else if resetMessageTone === 'error'}
+      <Alert tone="error">{resetMessage}</Alert>
+    {:else if resetMessageTone === 'info'}
+      <Alert tone="info">{resetMessage}</Alert>
     {:else if saved.length === 0}
       {#if connectivityKnown && hasInternet}
         <Alert tone="info">
@@ -95,7 +147,7 @@
         <Alert tone="info">No managed network is configured yet.</Alert>
       {/if}
     {:else}
-      {#each saved as entry}
+      {#each saved as entry (entry.id)}
         <div class="rounded-lg border border-border bg-white p-4">
           <div class="flex items-center justify-between gap-3">
             <div>
@@ -108,7 +160,7 @@
             <Button
               variant="destructive"
               loading={deletingId === entry.id}
-              disabled={!!deletingId && deletingId !== entry.id}
+              disabled={resetLoading || (!!deletingId && deletingId !== entry.id)}
               onclick={() => deleteSaved(entry.id)}
             >
               Delete
@@ -129,7 +181,7 @@
         <p class="text-sm text-muted-foreground">{$branding.help_text}</p>
       {/if}
       <div class="flex flex-wrap items-center gap-2">
-        {#each $branding.help_links as link}
+        {#each $branding.help_links as link (`${link.label}-${link.url}`)}
           <a class="rounded-md border border-border bg-white px-3 py-2 text-sm font-medium text-primary hover:bg-muted" href={link.url} target="_blank" rel="noreferrer">
             <span class="mr-1 inline-flex items-center"><Icon name="link" className="h-4 w-4" /></span>
             {link.label}
@@ -140,15 +192,15 @@
   {/if}
 
   <div class="flex flex-wrap items-center gap-3">
-    <Button onclick={() => goto('/setup/new')}>
+    <Button onclick={() => goto('/setup/new')} disabled={resetLoading}>
       <span class="mr-2 inline-flex items-center"><Icon name="plus" /></span>
       Add new network
     </Button>
-    <Button variant="secondary" onclick={() => goto('/settings')}>
+    <Button variant="secondary" onclick={() => goto('/settings')} disabled={resetLoading}>
       <span class="mr-2 inline-flex items-center"><Icon name="settings" /></span>
       Settings
     </Button>
-    <Button variant="secondary" onclick={refreshHome} loading={loading}>
+    <Button variant="secondary" onclick={refreshHome} loading={loading} disabled={resetLoading}>
       {#if !loading}
         <span class="mr-2 inline-flex items-center"><Icon name="refresh" /></span>
       {/if}

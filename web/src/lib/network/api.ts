@@ -154,5 +154,10 @@ export const networkApi = {
   async forget(id: string): Promise<void> {
     const res = await withTimeout(api(`/saved/${id}`), { method: 'DELETE' });
     await parseOrThrow(res);
+  },
+
+  async resetAllSaved(): Promise<void> {
+    const res = await withTimeout(api('/saved/reset'), { method: 'POST' }, TIMEOUT_SLOW_MS);
+    await parseOrThrow(res);
   }
 };

@@ -28,6 +28,7 @@ pub fn router() -> Router<AppState> {
         .route("/wifi/scan", get(scan_wifi))
         .route("/ethernet/scan", get(scan_ethernet))
         .route("/saved", get(get_saved))
+        .route("/saved/reset", post(reset_saved_networks))
         .route("/saved/{id}", delete(forget_saved))
         .route("/wifi/test", post(test_wifi))
         .route("/ethernet/test", post(test_ethernet))
@@ -87,6 +88,11 @@ async fn forget_saved(
 ) -> Result<StatusCode, NetworkError> {
     state.network.forget_network(&id).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+async fn reset_saved_networks(State(state): State<AppState>) -> Result<StatusCode, NetworkError> {
+    state.network.reset_all_networks().await?;
+    Ok(StatusCode::ACCEPTED)
 }
 
 #[derive(Serialize)]
@@ -362,5 +368,23 @@ mod tests {
                 .unwrap_or_default()
                 .contains("Invalid IPv4 prefix")
         );
+    }
+
+    #[tokio::test]
+    async fn test_reset_saved_networks_clears_profiles() {
+        let server = get_test_server();
+
+        let initial = server.get("/saved").await;
+        initial.assert_status_ok();
+        assert_eq!(initial.json::<serde_json::Value>().as_array().map_or(0, |v| v.len()), 1);
+
+        server
+            .post("/saved/reset")
+            .await
+            .assert_status(axum::http::StatusCode::ACCEPTED);
+
+        let after = server.get("/saved").await;
+        after.assert_status_ok();
+        assert_eq!(after.json::<serde_json::Value>(), json!([]));
     }
 }

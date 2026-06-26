@@ -941,6 +941,51 @@ impl NetworkController for NmcliNetworkController {
         Ok(())
     }
 
+    async fn reset_all_networks(&self) -> NetResult<()> {
+        self.ensure_supervisor_started().await;
+
+        {
+            let mut state = self.ap_state.lock().await;
+            state.save_in_progress = true;
+        }
+
+        let reset_result: NetResult<()> = async {
+            for profile in [MANAGED_WIFI_PROFILE, MANAGED_ETH_PROFILE] {
+                let output = Command::new("nmcli")
+                    .args(["connection", "delete", profile])
+                    .output()
+                    .await
+                    .map_err(|e| NetworkError::Internal(e.to_string()))?;
+
+                if output.status.success() {
+                    info!("Deleted managed network profile {profile}");
+                    continue;
+                }
+
+                let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+                if !stderr_indicates_missing_connection(&stderr) {
+                    return Err(NetworkError::Internal(stderr));
+                }
+            }
+
+            {
+                let mut tests = self.active_tests.lock().await;
+                tests.clear();
+            }
+
+            self.start_hotspot(&self.hotspot_name, &self.hotspot_password)
+                .await
+        }
+        .await;
+
+        {
+            let mut state = self.ap_state.lock().await;
+            state.save_in_progress = false;
+        }
+
+        reset_result
+    }
+
     async fn get_connectivity(&self) -> NetResult<Connectivity> {
         self.ensure_supervisor_started().await;
         self.current_connectivity().await

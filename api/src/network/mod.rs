@@ -56,6 +56,9 @@ pub trait NetworkController: Send + Sync {
     /// Forgets a saved network by its internal ID (e.g. "managed-wifi-1" or UUID)
     async fn forget_network(&self, id: &str) -> Result<()>;
 
+    /// Removes managed network profiles and re-enables setup AP.
+    async fn reset_all_networks(&self) -> Result<()>;
+
     /// Gets current internet connectivity status
     async fn get_connectivity(&self) -> Result<Connectivity>;
 
