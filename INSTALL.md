@@ -5,7 +5,7 @@ NetworkManager. Release bundles contain the ARM64 binary, frontend, installer,
 systemd unit, and captive portal rules. Rust, Bun, and Docker are not needed on
 the device.
 
-Download a published version on a workstation or provisioning controller. Replace the example version with the release you want:
+Download a release on your workstation. Replace the example version as needed:
 
 ```fish
 set version v0.1.0
