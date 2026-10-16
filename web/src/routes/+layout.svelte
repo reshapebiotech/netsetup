@@ -1,9 +1,21 @@
 <script lang="ts">
   import { onMount, type Snippet } from 'svelte';
+  import { page } from '$app/state';
+  import { setDevice } from '#lib/device.js';
   import '../app.css';
   import { branding } from '#lib/branding.js';
   import { networkApi } from '#lib/network/api.js';
   import Icon from '#lib/components/ui/icon.svelte';
+
+  const device = $state<{ hostname: string | null }>({ hostname: null });
+  setDevice(device);
+
+  const navigation = [
+    { href: '/', label: 'Network' },
+    { href: '/connectivity', label: 'Connectivity' },
+    { href: '/settings', label: 'Settings' },
+    { href: '/help', label: 'Help' }
+  ];
 
   type DeviceStatus = 'checking' | 'online' | 'no_internet' | 'disconnected';
 
@@ -52,6 +64,9 @@
   }
 
   onMount(() => {
+    void networkApi.getDeviceInfo().then(info => {
+      if (typeof info.hostname === 'string' && info.hostname) device.hostname = info.hostname;
+    }).catch(() => {});
     void refreshDeviceStatus();
     const timer = window.setInterval(() => {
       void refreshDeviceStatus();
@@ -61,18 +76,22 @@
 </script>
 
 <svelte:head>
-  <title>{$branding.product_name}</title>
+  <title>{device.hostname ?? 'Network setup'}</title>
   <link rel="icon" href={$branding.favicon_path} />
 </svelte:head>
 
 <div
   class="mx-auto min-h-screen w-full max-w-4xl px-4 py-8 sm:px-6 lg:px-10"
 >
-  <div class="mb-8 flex flex-col gap-3 rounded-xl border border-border/80 bg-white/80 p-4 shadow-xs backdrop-blur-sm sm:flex-row sm:items-center sm:justify-between">
+  <header class="mb-8 overflow-hidden rounded-xl bg-slate-900 text-white shadow-sm">
+    <div class="flex flex-wrap items-center justify-between gap-4 p-4 sm:px-5">
     {#if $branding.logo_path}
       <a href="/" aria-label="Back to home" class="shrink-0">
-        <img src={$branding.logo_path} alt="{$branding.product_name} logo" class="h-auto max-h-14 w-auto object-contain" />
+        <img src={$branding.logo_path} alt="Reshape" class="h-auto max-h-12 w-auto object-contain" />
       </a>
+    {/if}
+    {#if device.hostname}
+      <p class="min-w-0 flex-1 break-words text-sm font-semibold"><bdi>{device.hostname}</bdi></p>
     {/if}
     <div class={`rounded-lg border px-3 py-2 text-sm sm:max-w-sm ${statusClass[deviceStatus]}`} title={statusTooltip[deviceStatus]}>
       <p class="flex items-center gap-2 font-medium" title={statusTooltip[deviceStatus]}>
@@ -88,6 +107,16 @@
         {/if}
       </p>
     </div>
-  </div>
+    </div>
+    <nav aria-label="Main navigation" class="grid grid-cols-4 gap-1 border-t border-white/15 p-2">
+      {#each navigation as item (item.href)}
+        {@const active = item.href === '/' ? page.url.pathname === '/' || page.url.pathname.startsWith('/setup/') || page.url.pathname.startsWith('/networks/') : page.url.pathname.startsWith(item.href)}
+        <a href={item.href} aria-current={active ? 'page' : undefined}
+          class={['flex min-h-11 items-center justify-center rounded-md px-1 text-sm font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white', active ? 'bg-white/15 text-white' : 'text-slate-300 hover:bg-white/10 hover:text-white']}>
+          {item.label}
+        </a>
+      {/each}
+    </nav>
+  </header>
   {@render children()}
 </div>

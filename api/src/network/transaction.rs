@@ -1,5 +1,5 @@
 use super::nmcli::{build_nmcli_connection_args, parse_nmcli_terse_line};
-use super::types::{ConnectivityReport, NetworkSettings, NetworkTransport};
+use super::types::{ConnectivityReport, CurrentConnectionCheck, NetworkSettings, NetworkTransport};
 use super::{NetworkError, Result};
 use async_trait::async_trait;
 use hickory_server::proto::{
@@ -78,7 +78,9 @@ impl Commands for SystemCommands {
                 "{program} could not complete the network operation"
             )));
         }
-        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+        Ok(String::from_utf8_lossy(&output.stdout)
+            .trim_end_matches(['\r', '\n'])
+            .to_string())
     }
 }
 
@@ -241,6 +243,73 @@ pub(super) async fn run(
         }
     }
     Ok(report)
+}
+
+pub(super) async fn check_current_connections(
+    commands: &impl Commands,
+) -> Result<Vec<CurrentConnectionCheck>> {
+    let active = nmcli(
+        commands,
+        &[
+            "-t",
+            "-f",
+            "UUID,TYPE,DEVICE,NAME",
+            "connection",
+            "show",
+            "--active",
+        ],
+    )
+    .await?;
+    let mut checks = Vec::new();
+    for line in active.lines() {
+        let fields = parse_nmcli_terse_line(line);
+        if fields.len() != 4 || fields[2].is_empty() || fields[2] == "--" {
+            continue;
+        }
+        match fields[1].as_str() {
+            "802-11-wireless" => {
+                let mode = nmcli(
+                    commands,
+                    &[
+                        "-g",
+                        "802-11-wireless.mode",
+                        "connection",
+                        "show",
+                        "uuid",
+                        &fields[0],
+                    ],
+                )
+                .await?;
+                if mode.trim() == "ap" {
+                    continue;
+                }
+            }
+            "802-3-ethernet" => {}
+            _ => continue,
+        }
+        checks.push(async move {
+            let result = timeout(Duration::from_secs(20), probe(commands, &fields[2])).await;
+            let (report, error) = match result {
+                Ok(Ok(report)) => (Some(report), None),
+                Ok(Err(error)) => (None, Some(error.to_string())),
+                Err(_) => (
+                    None,
+                    Some("The connectivity check timed out. Try again.".into()),
+                ),
+            };
+            CurrentConnectionCheck {
+                name: fields[3].clone(),
+                interface: fields[2].clone(),
+                report,
+                error,
+            }
+        });
+    }
+    let mut results = Vec::new();
+    for check in checks {
+        results.push(check.await);
+    }
+    Ok(results)
 }
 
 async fn probe(commands: &impl Commands, interface: &str) -> Result<ConnectivityReport> {
@@ -452,6 +521,33 @@ fn dns_answers(bytes: &[u8], query: &Message) -> std::io::Result<Vec<Ipv4Addr>> 
 mod tests {
     use super::*;
     use std::sync::Mutex;
+
+    struct ReadOnlyCommands;
+    #[async_trait]
+    impl Commands for ReadOnlyCommands {
+        async fn run(&self, program: &str, args: &[String]) -> Result<String> {
+            let call = format!("{program} {}", args.join(" "));
+            match call.as_str() {
+                "nmcli -t -f UUID,TYPE,DEVICE,NAME connection show --active" => Ok("ap-id:802-11-wireless:wlan0:Device AP\neth-id:802-3-ethernet:eth0:Wired\nloopback:loopback:lo:lo".into()),
+                "nmcli -g 802-11-wireless.mode connection show uuid ap-id" => Ok("ap".into()),
+                "nmcli -g IP4.ADDRESS device show eth0" => Ok("192.168.1.42/24".into()),
+                "nmcli -g IP4.GATEWAY device show eth0" => Ok("192.168.1.1".into()),
+                "nmcli -g IP4.DNS device show eth0" => Ok(String::new()),
+                "ping -I eth0 -c 1 -W 2 192.168.1.1" => Ok(String::new()),
+                _ => panic!("Unexpected operation in read-only check: {call}"),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn current_checks_skip_access_points_and_never_modify_connections() {
+        let results = check_current_connections(&ReadOnlyCommands).await.unwrap();
+        assert_eq!(results.len(), 1);
+        let report = results[0].report.as_ref().unwrap();
+        assert_eq!(report.interface, "eth0");
+        assert_eq!(report.gateway_reachable, Some(true));
+        assert!(!report.internet_verified);
+    }
 
     #[derive(Default)]
     struct FakeCommands {

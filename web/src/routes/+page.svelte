@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { getDevice } from '#lib/device.js';
+  const device = getDevice();
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import Card from '#lib/components/ui/card.svelte';
@@ -100,7 +102,7 @@
 
 <div class="space-y-8">
   <header class="space-y-4">
-    <p class="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">{$branding.product_name}</p>
+    <p class="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">{device.hostname ?? 'Network setup'}</p>
     <h1 class="text-4xl font-bold leading-tight">{$branding.headline}</h1>
     <div class="max-w-2xl space-y-2">
       <p class="text-base text-muted-foreground">Use this tool to bring the device online and manage the network profile used by the device.</p>
@@ -158,13 +160,13 @@
       {#each saved as entry (entry.id)}
         <div class="rounded-lg border border-border bg-white p-4">
           <div class="flex items-center justify-between gap-3">
-            <div>
-              <p class="flex items-center gap-2 text-sm font-semibold">
+            <a href={`/networks/${encodeURIComponent(entry.id)}`} class="min-w-0 flex-1 rounded-md py-2 text-primary hover:underline focus-visible:outline-2 focus-visible:outline-primary">
+              <p class="flex items-center gap-2 break-words text-sm font-semibold">
                 <Icon name={entry.transport === 'wifi' ? 'wifi' : 'ethernet'} className="h-4 w-4 text-muted-foreground" />
                 {entry.display_name}
               </p>
-              <p class="text-xs uppercase tracking-wide text-muted-foreground">{entry.transport}</p>
-            </div>
+              <p class="text-xs uppercase tracking-wide text-muted-foreground">{entry.transport} · View configuration →</p>
+            </a>
             <Button
               variant="destructive"
               loading={deletingId === entry.id}
@@ -179,31 +181,7 @@
     {/if}
   </Card>
 
-  {#if $branding.help_links.length > 0}
-    <Card className="space-y-4 p-6">
-      <h2 class="flex items-center gap-2 text-lg font-semibold">
-        <Icon name="help" className="h-5 w-5 text-primary" />
-        {$branding.help_title}
-      </h2>
-      {#if $branding.help_text}
-        <p class="text-sm text-muted-foreground">{$branding.help_text}</p>
-      {/if}
-      <div class="flex flex-wrap items-center gap-2">
-        {#each $branding.help_links as link (`${link.label}-${link.url}`)}
-          <a class="rounded-md border border-border bg-white px-3 py-2 text-sm font-medium text-primary hover:bg-muted" href={link.url} target="_blank" rel="noreferrer">
-            <span class="mr-1 inline-flex items-center"><Icon name="link" className="h-4 w-4" /></span>
-            {link.label}
-          </a>
-        {/each}
-      </div>
-    </Card>
-  {/if}
-
-  <div class="flex items-center justify-between gap-3">
-    <Button variant="secondary" onclick={() => goto('/settings')} disabled={resetLoading}>
-      <span class="mr-2 inline-flex items-center"><Icon name="settings" /></span>
-      Settings
-    </Button>
+  <div class="flex items-center justify-end gap-3">
     <Button onclick={() => goto('/setup/new')} disabled={resetLoading}>
       <span class="mr-2 inline-flex items-center"><Icon name="plus" /></span>
       Add new network

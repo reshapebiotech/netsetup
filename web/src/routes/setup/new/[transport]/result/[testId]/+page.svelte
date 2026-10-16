@@ -8,7 +8,7 @@
   import Loading from '#lib/components/ui/loading.svelte';
   import Icon from '#lib/components/ui/icon.svelte';
   import { networkApi } from '#lib/network/api.js';
-  import { resultSummary } from '#lib/network/results.js';
+  import ConnectionReport from '#lib/components/network/connection-report.svelte';
   import type { ConnectionState } from '#lib/network/types.js';
 
   const transport = $derived(page.params.transport === 'ethernet' ? 'ethernet' : 'wifi');
@@ -63,20 +63,14 @@
       <Alert tone="error">{error}</Alert>
       <Button onclick={loadStatus}>Reload result</Button>
     {:else if status?.status === 'Connected'}
-      <Alert tone="info">{resultSummary(status.detail)}</Alert>
-      <dl class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-        <dt>Network connected</dt><dd>{status.detail.interface} · {status.detail.address}</dd>
-        <dt>Gateway reachable</dt>
-        <dd>{status.detail.gateway_reachable === null ? 'No gateway configured' : status.detail.gateway_reachable ? 'Verified' : 'Could not verify'}</dd>
-        <dt>Internet access</dt><dd>{status.detail.internet_verified ? 'Verified' : 'Could not verify'}</dd>
-        <dt>Reshape service</dt><dd>{status.detail.reshape_reachable ? 'Reachable' : 'Could not reach'}</dd>
-      </dl>
+      <ConnectionReport report={status.detail} />
       {#if !status.detail.reshape_reachable}
         <p class="text-sm text-muted-foreground">
           You can save this connection, but the device may be unable to communicate with Reshape.
           A firewall, DNS settings, or a service outage may prevent these checks from succeeding.
         </p>
       {/if}
+
       <p class="text-sm text-muted-foreground">Your previous connection has been restored. Saving will apply these settings and replace the previous {transport === 'wifi' ? 'Wi-Fi' : 'Ethernet'} profile.</p>
       <div class="flex flex-wrap items-center gap-3">
         <Button onclick={save} loading={movingToSave}>

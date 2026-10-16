@@ -2,7 +2,6 @@ import { readable } from 'svelte/store';
 import type { BrandingConfig } from '#lib/network/types.js';
 
 export const reshapeBranding: BrandingConfig = {
-  product_name: 'Reshape Imaging Device',
   company_name: 'Reshape Biotech',
   headline: 'Network configuration',
   support_text: 'Connect this device to your network.',

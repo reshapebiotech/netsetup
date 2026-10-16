@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { getDevice } from '#lib/device.js';
+  const device = getDevice();
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import Card from '#lib/components/ui/card.svelte';
@@ -7,17 +9,16 @@
   import Loading from '#lib/components/ui/loading.svelte';
   import Icon from '#lib/components/ui/icon.svelte';
   import { networkApi } from '#lib/network/api.js';
-  import { branding } from '#lib/branding.js';
   import type { NetworkMacAddresses } from '#lib/network/types.js';
 
-  let apPersistent = false;
-  let apLoading = true;
-  let apSaving = false;
-  let apError = '';
-  let apSavedMessage = '';
-  let macsLoading = true;
-  let macsError = '';
-  let macs: NetworkMacAddresses = { wifi: [], ethernet: [] };
+  let apPersistent = $state(false);
+  let apLoading = $state(true);
+  let apSaving = $state(false);
+  let apError = $state('');
+  let apSavedMessage = $state('');
+  let macsLoading = $state(true);
+  let macsError = $state('');
+  let macs = $state<NetworkMacAddresses>({ wifi: [], ethernet: [] });
 
   async function loadApPreferences() {
     apLoading = true;
@@ -67,7 +68,7 @@
 
 <div class="space-y-6">
   <header class="space-y-2">
-    <p class="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">{$branding.product_name}</p>
+    <p class="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">{device.hostname ?? 'Network setup'}</p>
     <h1 class="flex items-center gap-2 text-3xl font-bold">
       <Icon name="settings" className="h-6 w-6 text-primary" />
       Settings
@@ -155,7 +156,7 @@
       <div>
         <p class="text-sm font-semibold">Wi-Fi</p>
         {#if macs.wifi.length}
-          {#each macs.wifi as mac}
+          {#each macs.wifi as mac (mac)}
             <p class="font-mono text-sm text-muted-foreground">{mac}</p>
           {/each}
         {:else}
@@ -165,7 +166,7 @@
       <div>
         <p class="text-sm font-semibold">Ethernet</p>
         {#if macs.ethernet.length}
-          {#each macs.ethernet as mac}
+          {#each macs.ethernet as mac (mac)}
             <p class="font-mono text-sm text-muted-foreground">{mac}</p>
           {/each}
         {:else}

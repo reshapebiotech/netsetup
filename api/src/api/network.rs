@@ -3,7 +3,7 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
     response::IntoResponse,
-    routing::{delete, get, post},
+    routing::{get, post},
 };
 use serde::Serialize;
 use std::net::Ipv4Addr;
@@ -12,7 +12,8 @@ use uuid::Uuid;
 
 use crate::network::types::{
     AccessPointControllerStatus, AccessPointPreferences, AccessPointStatus, ConnectionState,
-    Connectivity, EthernetNetwork, NetworkMacAddresses, NetworkSettings, SavedNetwork, WifiNetwork,
+    Connectivity, CurrentConnectionCheck, EthernetNetwork, NetworkMacAddresses, NetworkSettings,
+    SavedNetwork, SavedNetworkDetails, WifiNetwork,
 };
 use crate::network::{NetworkController, NetworkError};
 
@@ -27,7 +28,7 @@ pub fn router() -> Router<AppState> {
         .route("/ethernet/scan", get(scan_ethernet))
         .route("/saved", get(get_saved))
         .route("/saved/reset", post(reset_saved_networks))
-        .route("/saved/{id}", delete(forget_saved))
+        .route("/saved/{id}", get(get_saved_network).delete(forget_saved))
         .route("/wifi/test", post(test_wifi))
         .route("/ethernet/test", post(test_ethernet))
         .route("/tests/{test_id}/save", post(save_test))
@@ -36,6 +37,7 @@ pub fn router() -> Router<AppState> {
         .route("/ethernet/connect", post(connect_ethernet_compat))
         .route("/status/{test_id}", get(status))
         .route("/connectivity", get(get_connectivity))
+        .route("/connectivity/check", get(check_current_connections))
         .route("/mac_addresses", get(get_mac_addresses))
         .route("/access_point", get(get_hotspot_status))
         .route("/access_point/controller", get(get_ap_controller_status))
@@ -78,6 +80,13 @@ async fn scan_ethernet(
 async fn get_saved(State(state): State<AppState>) -> Result<Json<Vec<SavedNetwork>>, NetworkError> {
     let saved = state.network.get_saved_networks().await?;
     Ok(Json(saved))
+}
+
+async fn get_saved_network(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<SavedNetworkDetails>, NetworkError> {
+    state.network.get_saved_network(&id).await.map(Json)
 }
 
 async fn forget_saved(
@@ -218,6 +227,12 @@ async fn get_hotspot_status(
     Ok(Json(status))
 }
 
+async fn check_current_connections(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<CurrentConnectionCheck>>, NetworkError> {
+    state.network.check_current_connections().await.map(Json)
+}
+
 async fn get_connectivity(
     State(state): State<AppState>,
 ) -> Result<Json<Connectivity>, NetworkError> {
@@ -269,6 +284,40 @@ mod tests {
         };
         let app = router().with_state(state);
         TestServer::new(app)
+    }
+
+    #[tokio::test]
+    async fn saved_network_edit_reuses_credentials_without_exposing_them() {
+        let server = get_test_server();
+        let details = server.get("/saved/managed-wifi-1").await;
+        details.assert_status_ok();
+        let json: serde_json::Value = details.json();
+        assert!(json["settings"]["password"].is_null());
+        assert_eq!(json["settings"]["ssid"], "Home_Network");
+        let started = server.post("/wifi/test").json(&json!({"id":"managed-wifi-1", "ssid":"Home_Network", "ipv4":{"method":"auto","dns":["9.9.9.9"]}})).await;
+        started.assert_status(axum::http::StatusCode::ACCEPTED);
+        let id = started.json::<serde_json::Value>()["test_id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        tokio::time::sleep(std::time::Duration::from_millis(3100)).await;
+        assert_eq!(
+            server
+                .get(&format!("/status/{id}"))
+                .await
+                .json::<serde_json::Value>()["status"],
+            "Connected"
+        );
+        server
+            .post(&format!("/tests/{id}/save"))
+            .await
+            .assert_status(axum::http::StatusCode::ACCEPTED);
+        let saved = server
+            .get(&format!("/saved/{id}"))
+            .await
+            .json::<serde_json::Value>();
+        assert_eq!(saved["settings"]["ipv4"]["dns"][0], "9.9.9.9");
+        assert!(saved["settings"]["password"].is_null());
     }
 
     #[tokio::test]

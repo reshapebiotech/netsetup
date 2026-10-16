@@ -11,7 +11,7 @@ function isValidIpv4(value: string): boolean {
   });
 }
 
-export function validateSettings(transport: Transport, input: NetworkSettings, enterprise: boolean, requiresPassword = true): string[] {
+export function validateSettings(transport: Transport, input: NetworkSettings, enterprise: boolean, requiresPassword = true, retainingPassword = false): string[] {
   const errors: string[] = [];
 
   if (transport === 'wifi' && !input.ssid?.trim()) {
@@ -20,10 +20,10 @@ export function validateSettings(transport: Transport, input: NetworkSettings, e
 
   if (enterprise) {
     if (!input.eap_login?.trim()) errors.push('802.1X identity is required');
-    if (!input.eap_password?.trim()) errors.push('802.1X password is required');
+    if (!retainingPassword && !input.eap_password?.trim()) errors.push('802.1X password is required');
   }
 
-  if (transport === 'wifi' && !enterprise && requiresPassword && !input.password?.trim()) {
+  if (transport === 'wifi' && !enterprise && requiresPassword && !retainingPassword && !input.password?.trim()) {
     errors.push('Password is required for secured Wi-Fi');
   }
 

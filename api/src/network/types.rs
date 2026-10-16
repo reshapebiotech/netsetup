@@ -109,6 +109,8 @@ pub struct AccessPointPreferences {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AccessPointControllerStatus {
+    pub ssid: String,
+    pub boot_grace_seconds: u64,
     pub is_enabled: bool,
     pub persistent_enabled: bool,
     pub automation_paused: bool,
@@ -119,4 +121,20 @@ pub struct AccessPointControllerStatus {
 pub struct NetworkMacAddresses {
     pub wifi: Vec<String>,
     pub ethernet: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CurrentConnectionCheck {
+    pub name: String,
+    pub interface: String,
+    pub report: Option<ConnectivityReport>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SavedNetworkDetails {
+    pub network: SavedNetwork,
+    pub settings: NetworkSettings,
+    pub security: String,
+    pub edit_unavailable: Option<String>,
 }

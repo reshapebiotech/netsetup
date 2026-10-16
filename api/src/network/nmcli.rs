@@ -3,8 +3,8 @@ use crate::network::ap_supervisor::{
 };
 use crate::network::types::{
     AccessPointControllerStatus, AccessPointPreferences, AccessPointStatus, ConnectionState,
-    Connectivity, EthernetNetwork, IpMethod, NetworkMacAddresses, NetworkSettings,
-    NetworkTransport, SavedNetwork, WifiNetwork,
+    Connectivity, CurrentConnectionCheck, EthernetNetwork, IpMethod, NetworkMacAddresses,
+    NetworkSettings, NetworkTransport, SavedNetwork, SavedNetworkDetails, WifiNetwork,
 };
 use crate::network::{NetworkController, NetworkError, Result as NetResult};
 use async_trait::async_trait;
@@ -61,13 +61,23 @@ pub struct NmcliNetworkController {
 impl NmcliNetworkController {
     async fn start_test(
         &self,
-        settings: NetworkSettings,
+        mut settings: NetworkSettings,
         transport: NetworkTransport,
     ) -> NetResult<Uuid> {
         self.ensure_supervisor_started().await;
         let guard = self.mutation.clone().try_lock_owned().map_err(|_| {
             NetworkError::ConnectionFailed("Another network operation is in progress".into())
         })?;
+        if let Some(id) = settings.id.clone() {
+            let details = self.get_saved_network(&id).await?;
+            super::profiles::retain_credentials(
+                &super::transaction::SystemCommands,
+                &details,
+                &transport,
+                &mut settings,
+            )
+            .await?;
+        }
         if transport == NetworkTransport::Wifi && settings.ssid.as_deref().is_none_or(str::is_empty)
         {
             return Err(NetworkError::ConnectionFailed(
@@ -779,6 +789,16 @@ impl NetworkController for NmcliNetworkController {
         Ok(saved)
     }
 
+    async fn get_saved_network(&self, id: &str) -> NetResult<SavedNetworkDetails> {
+        let network = self
+            .get_saved_networks()
+            .await?
+            .into_iter()
+            .find(|network| network.id == id)
+            .ok_or_else(|| NetworkError::NotFound("Saved network not found".into()))?;
+        super::profiles::inspect(&super::transaction::SystemCommands, network).await
+    }
+
     async fn start_wifi_test(&self, settings: NetworkSettings) -> NetResult<Uuid> {
         self.start_test(settings, NetworkTransport::Wifi).await
     }
@@ -933,6 +953,17 @@ impl NetworkController for NmcliNetworkController {
         reset_result
     }
 
+    async fn check_current_connections(&self) -> NetResult<Vec<CurrentConnectionCheck>> {
+        tokio::time::timeout(
+            Duration::from_secs(60),
+            super::transaction::check_current_connections(&super::transaction::SystemCommands),
+        )
+        .await
+        .map_err(|_| {
+            NetworkError::ConnectionFailed("Connectivity check timed out. Try again.".into())
+        })?
+    }
+
     async fn get_connectivity(&self) -> NetResult<Connectivity> {
         self.ensure_supervisor_started().await;
         self.current_connectivity().await
@@ -1024,6 +1055,8 @@ impl NetworkController for NmcliNetworkController {
             state.machine.last_reason().to_string()
         };
         Ok(AccessPointControllerStatus {
+            ssid: self.hotspot_name.clone(),
+            boot_grace_seconds: self.boot_grace.as_secs(),
             is_enabled,
             persistent_enabled: state.machine.persistent_enabled(),
             automation_paused,
