@@ -5,6 +5,7 @@ export interface NetworkFormState {
   ssid: string;
   password: string;
   enterprise: boolean;
+  openNetwork?: boolean;
   eapLogin: string;
   eapPassword: string;
   ipMethod: 'auto' | 'manual';
@@ -27,7 +28,7 @@ export function buildSettingsFromForm(state: NetworkFormState): NetworkSettings 
 
   if (state.transport === 'wifi') {
     settings.ssid = state.ssid.trim();
-    if (!state.enterprise) {
+    if (!state.enterprise && !state.openNetwork && state.password.length) {
       settings.password = state.password;
     }
   }

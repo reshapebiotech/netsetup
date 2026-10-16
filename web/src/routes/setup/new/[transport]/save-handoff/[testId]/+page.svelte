@@ -1,81 +1,91 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { page } from '$app/stores';
+  import { page } from '$app/state';
   import { goto } from '$app/navigation';
   import Card from '$lib/components/ui/card.svelte';
   import Button from '$lib/components/ui/button.svelte';
   import Alert from '$lib/components/ui/alert.svelte';
-  import Icon from '$lib/components/ui/icon.svelte';
+  import Loading from '$lib/components/ui/loading.svelte';
   import { networkApi } from '$lib/network/api';
-  import { branding } from '$lib/branding';
+  import { resultSummary } from '$lib/network/results';
 
-  let testId = '';
-  let status: 'saving' | 'saved' | 'error' = 'saving';
-  let message = 'Saving connection…';
+  const testId = $derived(page.params.testId ?? '');
+  let status = $state<'saving' | 'saved' | 'unconfirmed' | 'error'>('saving');
+  let message = $state('Applying and verifying your connection…');
+  let cancelled = false;
 
-  $: testId = $page.params.testId ?? '';
+  async function checkOutcome() {
+    const deadline = Date.now() + 180_000;
+    while (!cancelled && Date.now() < deadline) {
+      try {
+        const current = await networkApi.getStatus(testId);
+        if (cancelled) return;
+        if (current.status === 'Saved') {
+          status = 'saved';
+          message = `Connection saved. ${resultSummary(current.detail)}.`;
+          return;
+        }
+        if (current.status === 'Failed') {
+          status = 'error';
+          message = current.detail;
+          return;
+        }
+        if (current.status === 'Connected') break;
+      } catch {
+        // Poll again when the device becomes reachable after switching networks.
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+    }
+    if (!cancelled) {
+      status = 'unconfirmed';
+      message = 'We could not confirm whether saving completed. Check that the device is online, or reconnect to setup Wi-Fi to check its status.';
+    }
+  }
 
   async function saveNow() {
     status = 'saving';
-    message = 'Saving connection…';
+    message = 'Applying and verifying your connection…';
     try {
-      await networkApi.saveTest(testId);
-      status = 'saved';
-      message = 'Saved. This page may disconnect briefly while network services restart.';
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Failed to save connection';
-      if (msg.toLowerCase().includes('timed out') || msg.toLowerCase().includes('abort')) {
-        status = 'saved';
-        message = 'Connection is switching. This page may disconnect briefly, which is expected.';
-      } else {
+      const current = await networkApi.getStatus(testId);
+      if (current.status === 'Connected') {
+        await networkApi.saveTest(testId);
+      } else if (current.status === 'Failed') {
         status = 'error';
-        message = msg;
+        message = current.detail;
+        return;
       }
+    } catch {
+      // A lost response is inconclusive; retrieve the actual operation status.
     }
+    await checkOutcome();
   }
 
   onMount(() => {
     void saveNow();
+    return () => { cancelled = true; };
   });
 </script>
 
 <div class="space-y-6">
   <header class="space-y-2">
     <p class="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">Final handoff</p>
-    <h1 class="flex items-center gap-2 text-3xl font-bold">
-      <Icon name="save" className="h-6 w-6 text-primary" />
-      Applying your saved network
-    </h1>
+    <h1 class="text-3xl font-bold">Applying your saved network</h1>
   </header>
-
   <Card className="space-y-4">
-    {#if status === 'error'}
-      <Alert tone="error">{message}</Alert>
-      <div class="flex items-center gap-3">
-        <Button onclick={saveNow}>
-          <span class="mr-2 inline-flex items-center"><Icon name="refresh" /></span>
-          Retry save
-        </Button>
-        <Button variant="secondary" onclick={() => goto('/')}>
-          <span class="mr-2 inline-flex items-center"><Icon name="home" /></span>
-          Back to home
-        </Button>
-      </div>
+    <Alert tone={status === 'error' ? 'error' : 'info'}>{message}</Alert>
+    {#if status === 'saving'}
+      <Loading label="Waiting for confirmation…" />
+      <p class="text-sm text-muted-foreground">
+        Setup Wi-Fi may disappear as the device switches to your network.
+        If verification fails, the previous connection will be restored.
+        Reconnect to setup Wi-Fi if it returns.
+      </p>
+    {:else if status === 'unconfirmed'}
+      <Button onclick={saveNow}>Check again</Button>
+    {:else if status === 'error'}
+      <Button onclick={() => goto(`/setup/new/${page.params.transport}`)}>Configure again</Button>
     {:else}
-      <Alert tone="info">{message}</Alert>
-      <p class="text-sm text-muted-foreground">
-        This is expected behavior: during save, this page can briefly lose connection.
-        If the page freezes or disconnects, you can close it safely. Setup is complete.
-      </p>
-      <p class="text-sm text-muted-foreground">
-        {$branding.success_message}
-      </p>
-      {#if status === 'saved'}
-        <Button onclick={() => goto('/')}>
-          <span class="mr-2 inline-flex items-center"><Icon name="home" /></span>
-          Return home
-        </Button>
-      {/if}
+      <Button onclick={() => goto('/')}>Return home</Button>
     {/if}
   </Card>
 </div>

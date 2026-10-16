@@ -31,8 +31,21 @@ struct ApSupervisorState {
     machine: ApSupervisorMachine,
 }
 
+const BOOT_DECISION_PATH: &str = "/run/reshape-netsetup/boot-decision";
+
 const MANAGED_WIFI_PROFILE: &str = "reshape-managed-wifi";
 const MANAGED_ETH_PROFILE: &str = "reshape-managed-ethernet";
+
+async fn persist_boot_decision() {
+    if let Err(e) = async {
+        fs::create_dir_all("/run/reshape-netsetup").await?;
+        fs::write(BOOT_DECISION_PATH, b"resolved\n").await
+    }
+    .await
+    {
+        warn!("Could not preserve AP boot decision across service restarts: {e}");
+    }
+}
 
 pub struct NmcliNetworkController {
     active_tests: Arc<Mutex<HashMap<Uuid, TestRecord>>>,
@@ -41,9 +54,62 @@ pub struct NmcliNetworkController {
     hotspot_name: String,
     hotspot_password: String,
     probe_host: String,
+    mutation: Arc<Mutex<()>>,
+    boot_grace: Duration,
 }
 
 impl NmcliNetworkController {
+    async fn start_test(
+        &self,
+        settings: NetworkSettings,
+        transport: NetworkTransport,
+    ) -> NetResult<Uuid> {
+        self.ensure_supervisor_started().await;
+        let guard = self.mutation.clone().try_lock_owned().map_err(|_| {
+            NetworkError::ConnectionFailed("Another network operation is in progress".into())
+        })?;
+        if transport == NetworkTransport::Wifi && settings.ssid.as_deref().is_none_or(str::is_empty)
+        {
+            return Err(NetworkError::ConnectionFailed(
+                "A Wi-Fi SSID is required".into(),
+            ));
+        }
+        let interface =
+            super::transaction::select_interface(&super::transaction::SystemCommands, &transport)
+                .await?;
+        let test_id = Uuid::new_v4();
+        self.active_tests.lock().await.insert(
+            test_id,
+            TestRecord {
+                state: ConnectionState::Testing,
+                settings: settings.clone(),
+                transport: transport.clone(),
+            },
+        );
+        let tests = self.active_tests.clone();
+        tokio::spawn(async move {
+            let _guard = guard;
+            // Let the browser receive the test ID before its AP connection disappears.
+            sleep(Duration::from_secs(1)).await;
+            let result = super::transaction::run(
+                &super::transaction::SystemCommands,
+                &settings,
+                &transport,
+                &interface,
+                None,
+                None,
+            )
+            .await;
+            if let Some(record) = tests.lock().await.get_mut(&test_id) {
+                record.state = match result {
+                    Ok(report) => ConnectionState::Connected(report),
+                    Err(e) => ConnectionState::Failed(e.to_string()),
+                };
+            }
+        });
+        Ok(test_id)
+    }
+
     pub fn new() -> Self {
         Self {
             active_tests: Arc::new(Mutex::new(HashMap::new())),
@@ -56,6 +122,12 @@ impl NmcliNetworkController {
             hotspot_password: std::env::var("DEVICE_AP_PASSWORD")
                 .unwrap_or_else(|_| "reshape123".to_string()),
             probe_host: Self::resolve_probe_host(),
+            mutation: Arc::new(Mutex::new(())),
+            boot_grace: std::env::var("AP_BOOT_GRACE_SECONDS")
+                .ok()
+                .and_then(|v| v.parse::<u64>().ok())
+                .map(Duration::from_secs)
+                .unwrap_or(DEFAULT_BOOT_GRACE),
         }
     }
 
@@ -87,9 +159,13 @@ impl NmcliNetworkController {
     }
 
     async fn run_supervisor_tick(&self) -> bool {
+        let Ok(_guard) = self.mutation.try_lock() else {
+            return false;
+        };
         {
             let state = self.ap_state.lock().await;
             if state.machine.resolved() {
+                persist_boot_decision().await;
                 return true;
             }
         }
@@ -108,7 +184,7 @@ impl NmcliNetworkController {
 
         let boot_grace_elapsed = read_device_uptime()
             .await
-            .is_none_or(|elapsed| elapsed >= DEFAULT_BOOT_GRACE);
+            .is_none_or(|elapsed| elapsed >= self.boot_grace);
 
         let current_enabled = match self.is_hotspot_enabled().await {
             Ok(v) => v,
@@ -171,7 +247,11 @@ impl NmcliNetworkController {
             }
         }
 
-        decision.resolved
+        let resolved = self.ap_state.lock().await.machine.resolved();
+        if resolved {
+            persist_boot_decision().await;
+        }
+        resolved
     }
 
     async fn cleanup_hostname_ap_duplicates(&self) -> NetResult<()> {
@@ -242,7 +322,12 @@ impl NmcliNetworkController {
         let boot_elapsed = read_device_uptime().await;
         {
             let mut state = self.ap_state.lock().await;
-            state.machine = ApSupervisorMachine::for_boot_elapsed(boot_elapsed, DEFAULT_BOOT_GRACE);
+            state.machine = ApSupervisorMachine::for_boot_elapsed(boot_elapsed, self.boot_grace);
+            if fs::try_exists(BOOT_DECISION_PATH).await.unwrap_or(false) {
+                state
+                    .machine
+                    .resolve("AP boot decision already made for this boot");
+            }
         }
 
         let cloned = Self {
@@ -252,6 +337,8 @@ impl NmcliNetworkController {
             hotspot_name: self.hotspot_name.clone(),
             hotspot_password: self.hotspot_password.clone(),
             probe_host: self.probe_host.clone(),
+            mutation: self.mutation.clone(),
+            boot_grace: self.boot_grace,
         };
 
         tokio::spawn(async move {
@@ -383,7 +470,7 @@ impl NmcliNetworkController {
     }
 }
 
-fn parse_nmcli_terse_line(line: &str) -> Vec<String> {
+pub(super) fn parse_nmcli_terse_line(line: &str) -> Vec<String> {
     let mut fields = Vec::new();
     let mut current = String::new();
     let mut chars = line.chars().peekable();
@@ -512,13 +599,13 @@ pub fn parse_scan_output(stdout: &str) -> Vec<WifiNetwork> {
         }
     }
 
-    networks.sort_by(|a, b| b.signal_strength.cmp(&a.signal_strength));
+    networks.sort_by_key(|a| std::cmp::Reverse(a.signal_strength));
     let mut seen = HashSet::new();
     networks.retain(|n| seen.insert(n.ssid.clone()));
     networks
 }
 
-fn build_nmcli_connection_args(
+pub(super) fn build_nmcli_connection_args(
     settings: &NetworkSettings,
     is_wifi: bool,
     connection_name: &str,
@@ -561,6 +648,7 @@ fn build_nmcli_connection_args(
         args.push("mschapv2".to_string());
     } else if let Some(pwd) = &settings.password
         && is_wifi
+        && !pwd.is_empty()
     {
         args.push("wifi-sec.key-mgmt".to_string());
         args.push("wpa-psk".to_string());
@@ -600,80 +688,21 @@ fn build_nmcli_connection_args(
             IpMethod::Auto => {
                 args.push("ipv4.method".to_string());
                 args.push("auto".to_string());
+                if let Some(dns) = &ipv4.dns
+                    && !dns.is_empty()
+                {
+                    args.extend([
+                        "ipv4.dns".into(),
+                        dns.join(","),
+                        "ipv4.ignore-auto-dns".into(),
+                        "yes".into(),
+                    ]);
+                }
             }
         }
     }
 
     args
-}
-
-async fn run_nmcli_test(settings: &NetworkSettings, transport: &NetworkTransport) -> NetResult<()> {
-    match transport {
-        NetworkTransport::Wifi => {
-            if let Some(ssid) = &settings.ssid {
-                let _ = Command::new("nmcli")
-                    .args(["connection", "delete", ssid])
-                    .output()
-                    .await;
-            }
-
-            let test_name = settings.ssid.as_deref().unwrap_or("wifi-test");
-            let args = build_nmcli_connection_args(settings, true, test_name);
-            let add_out = Command::new("nmcli")
-                .args(args)
-                .output()
-                .await
-                .map_err(|e| NetworkError::ConnectionFailed(e.to_string()))?;
-            if !add_out.status.success() {
-                return Err(NetworkError::ConnectionFailed(
-                    String::from_utf8_lossy(&add_out.stderr).to_string(),
-                ));
-            }
-
-            let ssid = settings.ssid.clone().unwrap_or_default();
-            let up_out = Command::new("nmcli")
-                .args(["connection", "up", &ssid])
-                .output()
-                .await
-                .map_err(|e| NetworkError::ConnectionFailed(e.to_string()))?;
-            if !up_out.status.success() {
-                return Err(NetworkError::ConnectionFailed(
-                    String::from_utf8_lossy(&up_out.stderr).to_string(),
-                ));
-            }
-        }
-        NetworkTransport::Ethernet => {
-            let _ = Command::new("nmcli")
-                .args(["connection", "delete", "Wired connection"])
-                .output()
-                .await;
-
-            let args = build_nmcli_connection_args(settings, false, "Wired connection");
-            let add_out = Command::new("nmcli")
-                .args(args)
-                .output()
-                .await
-                .map_err(|e| NetworkError::ConnectionFailed(e.to_string()))?;
-            if !add_out.status.success() {
-                return Err(NetworkError::ConnectionFailed(
-                    String::from_utf8_lossy(&add_out.stderr).to_string(),
-                ));
-            }
-
-            let up_out = Command::new("nmcli")
-                .args(["connection", "up", "Wired connection"])
-                .output()
-                .await
-                .map_err(|e| NetworkError::ConnectionFailed(e.to_string()))?;
-            if !up_out.status.success() {
-                return Err(NetworkError::ConnectionFailed(
-                    String::from_utf8_lossy(&up_out.stderr).to_string(),
-                ));
-            }
-        }
-    }
-
-    Ok(())
 }
 
 #[async_trait]
@@ -752,67 +781,11 @@ impl NetworkController for NmcliNetworkController {
     }
 
     async fn start_wifi_test(&self, settings: NetworkSettings) -> NetResult<Uuid> {
-        self.ensure_supervisor_started().await;
-
-        let test_id = Uuid::new_v4();
-        {
-            let mut tests = self.active_tests.lock().await;
-            tests.insert(
-                test_id,
-                TestRecord {
-                    state: ConnectionState::Testing,
-                    settings: settings.clone(),
-                    transport: NetworkTransport::Wifi,
-                },
-            );
-        }
-
-        let active_tests = self.active_tests.clone();
-        tokio::spawn(async move {
-            let state = match run_nmcli_test(&settings, &NetworkTransport::Wifi).await {
-                Ok(()) => ConnectionState::Connected,
-                Err(NetworkError::ConnectionFailed(msg)) => ConnectionState::Failed(msg),
-                Err(e) => ConnectionState::Failed(e.to_string()),
-            };
-            let mut tests = active_tests.lock().await;
-            if let Some(record) = tests.get_mut(&test_id) {
-                record.state = state;
-            }
-        });
-
-        Ok(test_id)
+        self.start_test(settings, NetworkTransport::Wifi).await
     }
 
     async fn start_ethernet_test(&self, settings: NetworkSettings) -> NetResult<Uuid> {
-        self.ensure_supervisor_started().await;
-
-        let test_id = Uuid::new_v4();
-        {
-            let mut tests = self.active_tests.lock().await;
-            tests.insert(
-                test_id,
-                TestRecord {
-                    state: ConnectionState::Testing,
-                    settings: settings.clone(),
-                    transport: NetworkTransport::Ethernet,
-                },
-            );
-        }
-
-        let active_tests = self.active_tests.clone();
-        tokio::spawn(async move {
-            let state = match run_nmcli_test(&settings, &NetworkTransport::Ethernet).await {
-                Ok(()) => ConnectionState::Connected,
-                Err(NetworkError::ConnectionFailed(msg)) => ConnectionState::Failed(msg),
-                Err(e) => ConnectionState::Failed(e.to_string()),
-            };
-            let mut tests = active_tests.lock().await;
-            if let Some(record) = tests.get_mut(&test_id) {
-                record.state = state;
-            }
-        });
-
-        Ok(test_id)
+        self.start_test(settings, NetworkTransport::Ethernet).await
     }
 
     async fn connection_status(&self, test_id: Uuid) -> NetResult<ConnectionState> {
@@ -826,111 +799,64 @@ impl NetworkController for NmcliNetworkController {
 
     async fn save_test(&self, test_id: Uuid) -> NetResult<()> {
         self.ensure_supervisor_started().await;
-
-        let record = {
-            let tests = self.active_tests.lock().await;
-            tests
-                .get(&test_id)
-                .cloned()
-                .ok_or_else(|| NetworkError::NotFound("Test ID not found".into()))?
-        };
-
-        if record.state != ConnectionState::Connected {
+        let guard = self.mutation.clone().try_lock_owned().map_err(|_| {
+            NetworkError::ConnectionFailed("Another network operation is in progress".into())
+        })?;
+        let mut tests = self.active_tests.lock().await;
+        let record = tests
+            .get_mut(&test_id)
+            .ok_or_else(|| NetworkError::NotFound("Test ID not found".into()))?;
+        if matches!(record.state, ConnectionState::Saved(_)) {
+            return Ok(());
+        }
+        let ConnectionState::Connected(report) = &record.state else {
             return Err(NetworkError::ConnectionFailed(
                 "Cannot save an unsuccessful test".into(),
             ));
-        }
-
-        {
-            let mut state = self.ap_state.lock().await;
-            state.save_in_progress = true;
-        }
-
-        let save_result: NetResult<()> = match record.transport {
-            NetworkTransport::Wifi => {
-                let Some(ssid) = &record.settings.ssid else {
-                    return Err(NetworkError::ConnectionFailed(
-                        "Missing SSID for Wi-Fi test".into(),
-                    ));
-                };
-                let _ = Command::new("nmcli")
-                    .args(["connection", "delete", MANAGED_WIFI_PROFILE])
-                    .output()
-                    .await;
-
-                let mut managed_settings = record.settings.clone();
-                managed_settings.ssid = Some(ssid.clone());
-
-                let args =
-                    build_nmcli_connection_args(&managed_settings, true, MANAGED_WIFI_PROFILE);
-                let add_out = Command::new("nmcli")
-                    .args(args)
-                    .output()
-                    .await
-                    .map_err(|e| NetworkError::Internal(e.to_string()))?;
-                if !add_out.status.success() {
-                    Err(NetworkError::ConnectionFailed(
-                        String::from_utf8_lossy(&add_out.stderr).to_string(),
-                    ))
-                } else {
-                    let up_out = Command::new("nmcli")
-                        .args(["connection", "up", MANAGED_WIFI_PROFILE])
-                        .output()
-                        .await
-                        .map_err(|e| NetworkError::Internal(e.to_string()))?;
-                    if !up_out.status.success() {
-                        Err(NetworkError::ConnectionFailed(
-                            String::from_utf8_lossy(&up_out.stderr).to_string(),
-                        ))
-                    } else {
-                        Ok(())
-                    }
-                }
-            }
-            NetworkTransport::Ethernet => {
-                let _ = Command::new("nmcli")
-                    .args(["connection", "delete", MANAGED_ETH_PROFILE])
-                    .output()
-                    .await;
-
-                let args =
-                    build_nmcli_connection_args(&record.settings, false, MANAGED_ETH_PROFILE);
-                let add_out = Command::new("nmcli")
-                    .args(args)
-                    .output()
-                    .await
-                    .map_err(|e| NetworkError::Internal(e.to_string()))?;
-                if !add_out.status.success() {
-                    Err(NetworkError::ConnectionFailed(
-                        String::from_utf8_lossy(&add_out.stderr).to_string(),
-                    ))
-                } else {
-                    let up_out = Command::new("nmcli")
-                        .args(["connection", "up", MANAGED_ETH_PROFILE])
-                        .output()
-                        .await
-                        .map_err(|e| NetworkError::Internal(e.to_string()))?;
-                    if !up_out.status.success() {
-                        Err(NetworkError::ConnectionFailed(
-                            String::from_utf8_lossy(&up_out.stderr).to_string(),
-                        ))
-                    } else {
-                        Ok(())
-                    }
-                }
-            }
         };
-
-        {
-            let mut state = self.ap_state.lock().await;
-            state.save_in_progress = false;
-        }
-
-        save_result
+        let report = report.clone();
+        let settings = record.settings.clone();
+        let transport = record.transport.clone();
+        let name = match transport {
+            NetworkTransport::Wifi => MANAGED_WIFI_PROFILE,
+            NetworkTransport::Ethernet => MANAGED_ETH_PROFILE,
+        };
+        let old_profile = self.get_connection_by_name(name).await?.map(|p| p.id);
+        record.state = ConnectionState::Saving;
+        self.ap_state.lock().await.save_in_progress = true;
+        let tests = self.active_tests.clone();
+        let ap_state = self.ap_state.clone();
+        tokio::spawn(async move {
+            let _guard = guard;
+            // Let the accepted response reach the browser before switching its network.
+            sleep(Duration::from_secs(1)).await;
+            let result = super::transaction::run(
+                &super::transaction::SystemCommands,
+                &settings,
+                &transport,
+                &report.interface,
+                Some(&report),
+                old_profile.as_deref(),
+            )
+            .await;
+            if let Some(record) = tests.lock().await.get_mut(&test_id) {
+                record.state = match result {
+                    Ok(report) => ConnectionState::Saved(report),
+                    Err(e) => ConnectionState::Failed(e.to_string()),
+                };
+            }
+            ap_state.lock().await.save_in_progress = false;
+        });
+        Ok(())
     }
 
     async fn discard_test(&self, test_id: Uuid) -> NetResult<()> {
         self.ensure_supervisor_started().await;
+        let _guard = self.mutation.try_lock().map_err(|_| {
+            NetworkError::ConnectionFailed(
+                "Wait for the network operation to finish before discarding".into(),
+            )
+        })?;
         let mut tests = self.active_tests.lock().await;
         tests
             .remove(&test_id)
@@ -939,6 +865,9 @@ impl NetworkController for NmcliNetworkController {
     }
 
     async fn forget_network(&self, id: &str) -> NetResult<()> {
+        let _guard = self.mutation.try_lock().map_err(|_| {
+            NetworkError::ConnectionFailed("Another network operation is in progress".into())
+        })?;
         self.ensure_supervisor_started().await;
 
         let output = Command::new("nmcli")
@@ -958,6 +887,9 @@ impl NetworkController for NmcliNetworkController {
     }
 
     async fn reset_all_networks(&self) -> NetResult<()> {
+        let _guard = self.mutation.try_lock().map_err(|_| {
+            NetworkError::ConnectionFailed("Another network operation is in progress".into())
+        })?;
         self.ensure_supervisor_started().await;
 
         {
@@ -1109,6 +1041,9 @@ impl NetworkController for NmcliNetworkController {
     }
 
     async fn set_ap_preferences(&self, prefs: AccessPointPreferences) -> NetResult<()> {
+        let _guard = self.mutation.try_lock().map_err(|_| {
+            NetworkError::ConnectionFailed("Another network operation is in progress".into())
+        })?;
         self.ensure_supervisor_started().await;
 
         {

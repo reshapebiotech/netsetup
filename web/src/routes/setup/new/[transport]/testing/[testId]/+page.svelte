@@ -1,52 +1,42 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { page } from '$app/stores';
+  import { page } from '$app/state';
   import { goto } from '$app/navigation';
   import Card from '$lib/components/ui/card.svelte';
   import Alert from '$lib/components/ui/alert.svelte';
   import Loading from '$lib/components/ui/loading.svelte';
+  import Button from '$lib/components/ui/button.svelte';
   import Icon from '$lib/components/ui/icon.svelte';
   import { networkApi } from '$lib/network/api';
-  import type { ConnectionState, Transport } from '$lib/network/types';
 
-  let transport: Transport = 'wifi';
-  let testId = '';
-  let waitingForApi = false;
-  let lastError = '';
-  let pollCount = 0;
+  const transport = $derived(page.params.transport === 'ethernet' ? 'ethernet' : 'wifi');
+  const testId = $derived(page.params.testId ?? '');
+  let waitingForApi = $state(false);
+  let timedOut = $state(false);
   let cancelled = false;
 
-  $: transport = ($page.params.transport === 'ethernet' ? 'ethernet' : 'wifi') as Transport;
-  $: testId = $page.params.testId ?? '';
-
   async function poll() {
-    while (!cancelled) {
-      pollCount += 1;
+    const deadline = Date.now() + 180_000;
+    while (!cancelled && Date.now() < deadline) {
       try {
-        const status = (await networkApi.getStatus(testId)) as ConnectionState;
+        const status = await networkApi.getStatus(testId);
+        if (cancelled) return;
         waitingForApi = false;
-        lastError = '';
-
-        if (status.status === 'Testing') {
-          await new Promise((resolve) => setTimeout(resolve, 1400));
-          continue;
+        if (status.status !== 'Testing') {
+          await goto(`/setup/new/${transport}/result/${testId}`);
+          return;
         }
-
-        await goto(`/setup/new/${transport}/result/${testId}`);
-        return;
-      } catch (e) {
+      } catch {
         waitingForApi = true;
-        lastError = e instanceof Error ? e.message : 'Unable to reach setup service';
-        await new Promise((resolve) => setTimeout(resolve, 1800));
       }
+      await new Promise((resolve) => setTimeout(resolve, 1500));
     }
+    if (!cancelled) timedOut = true;
   }
 
   onMount(() => {
     void poll();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   });
 </script>
 
@@ -58,39 +48,21 @@
       Hold tight while we switch networks
     </h1>
   </header>
-
-  <Card className="space-y-3">
+  <Card className="space-y-4">
+    <p class="text-sm text-muted-foreground">
+      We will check the network, gateway, internet, and Reshape service, then restore your previous connection so you can review the results.
+    </p>
     {#if transport === 'wifi'}
       <p class="text-sm text-muted-foreground">
-        The Raspberry Pi has one radio, so this page can briefly disconnect while we test Wi-Fi.
-        Keep this tab open. We will continue automatically as soon as the device is reachable again.
-      </p>
-    {:else}
-      <p class="text-sm text-muted-foreground">
-        We are testing Ethernet. This page should usually stay connected during the test.
-        After you save, setup Wi-Fi may turn off and this page can disconnect.
+        Setup Wi-Fi may disappear for up to two minutes. Keep this tab open.
+        When it returns, reconnect to the same setup Wi-Fi if your phone or computer does not reconnect automatically.
       </p>
     {/if}
-
-    {#if waitingForApi}
-      <Loading label="Reconnecting to your device…" />
+    {#if timedOut}
+      <Alert tone="error">We could not retrieve the result. Reconnect to setup Wi-Fi and check again. If it does not return, reboot the device.</Alert>
+      <Button onclick={() => goto(`/setup/new/${transport}/result/${testId}`)}>Check result</Button>
     {:else}
-      <Loading label="Running connection test…" />
+      <Loading label={waitingForApi ? 'Reconnecting to your device…' : 'Testing and restoring your connection…'} />
     {/if}
-
-    {#if waitingForApi}
-      <Alert tone="info">
-        Reconnecting to your device… {lastError}
-      </Alert>
-    {/if}
-
-    <p class="flex items-center gap-2 text-xs text-muted-foreground">
-      <Icon name="refresh" className="h-3 w-3" />
-      Status checks: {pollCount}
-    </p>
-
-    <div class="h-2 w-full overflow-hidden rounded bg-muted">
-      <div class="h-full w-1/2 animate-pulse bg-primary"></div>
-    </div>
   </Card>
 </div>

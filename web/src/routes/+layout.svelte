@@ -1,14 +1,15 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, type Snippet } from 'svelte';
   import '../app.css';
-  import { branding, loadBranding } from '$lib/branding';
+  import { branding } from '$lib/branding';
   import { networkApi } from '$lib/network/api';
   import Icon from '$lib/components/ui/icon.svelte';
 
   type DeviceStatus = 'checking' | 'online' | 'no_internet' | 'disconnected';
 
-  let deviceStatus: DeviceStatus = 'checking';
-  let lastUpdatedAt: Date | null = null;
+  let { children }: { children: Snippet } = $props();
+  let deviceStatus = $state<DeviceStatus>('checking');
+  let lastUpdatedAt = $state<Date | null>(null);
 
   const statusText: Record<DeviceStatus, string> = {
     checking: 'Checking status…',
@@ -51,7 +52,6 @@
   }
 
   onMount(() => {
-    void loadBranding();
     void refreshDeviceStatus();
     const timer = window.setInterval(() => {
       void refreshDeviceStatus();
@@ -67,7 +67,6 @@
 
 <div
   class="mx-auto min-h-screen w-full max-w-4xl px-4 py-8 sm:px-6 lg:px-10"
-  style={$branding.background_path ? `background-image: url(${$branding.background_path}); background-size: cover; background-position: center;` : undefined}
 >
   <div class="mb-8 flex flex-col gap-3 rounded-xl border border-border/80 bg-white/80 p-4 shadow-sm backdrop-blur sm:flex-row sm:items-center sm:justify-between">
     {#if $branding.logo_path}
@@ -90,5 +89,5 @@
       </p>
     </div>
   </div>
-  <slot />
+  {@render children()}
 </div>

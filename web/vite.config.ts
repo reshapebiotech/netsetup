@@ -8,14 +8,6 @@ export default defineConfig({
       '/api': {
         target: process.env.API_BASE_URL ?? 'http://localhost:3000',
         changeOrigin: true
-      },
-      '/branding': {
-        target: process.env.API_BASE_URL ?? 'http://localhost:3000',
-        changeOrigin: true
-      },
-      '/favicon.ico': {
-        target: process.env.API_BASE_URL ?? 'http://localhost:3000',
-        changeOrigin: true
       }
     }
   },

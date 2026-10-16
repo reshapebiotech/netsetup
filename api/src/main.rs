@@ -1,5 +1,4 @@
 mod api;
-mod branding;
 pub mod dns;
 mod network;
 
@@ -20,7 +19,6 @@ use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::api::network::AppState;
-use crate::branding::{branding_assets_dir, branding_config_path, load_branding_config};
 use crate::dns::CaptivePortalDns;
 use crate::network::NetworkController;
 
@@ -151,12 +149,8 @@ async fn main() {
             Arc::new(crate::network::nmcli::NmcliNetworkController::new())
         };
 
-    let branding_config_path = branding_config_path();
-    let branding_assets_dir = branding_assets_dir(&branding_config_path);
-
     let state = AppState {
         network: network_controller.clone(),
-        branding: load_branding_config(),
     };
 
     if let Err(e) = network_controller.start_ap_supervisor().await {
@@ -170,14 +164,10 @@ async fn main() {
     } else {
         info!("Serving embedded static files from binary");
     }
-    info!("Serving branding assets from {}", branding_assets_dir);
 
     // Build our application with routes
-    let favicon_file = format!("{}/favicon.ico", branding_assets_dir);
     let app = Router::new()
         .nest("/api", api::router())
-        .nest_service("/branding", ServeDir::new(branding_assets_dir))
-        .route_service("/favicon.ico", ServeFile::new(favicon_file))
         .fallback(static_fallback)
         .with_state(state);
 

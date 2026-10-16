@@ -32,8 +32,32 @@ pub enum NetworkTransport {
 #[serde(tag = "status", content = "detail")]
 pub enum ConnectionState {
     Testing,
-    Connected,
+    Connected(ConnectivityReport),
+    Saving,
+    Saved(ConnectivityReport),
     Failed(String), // Reason for failure
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ConnectivityReport {
+    pub interface: String,
+    pub address: String,
+    pub gateway_reachable: Option<bool>,
+    pub internet_verified: bool,
+    pub reshape_reachable: bool,
+}
+
+impl ConnectivityReport {
+    pub fn preserves(&self, previous: &Self) -> bool {
+        (!previous.internet_verified || self.internet_verified)
+            && (!previous.reshape_reachable || self.reshape_reachable)
+            && (previous.internet_verified
+                || previous.reshape_reachable
+                || self.internet_verified
+                || self.reshape_reachable
+                || previous.gateway_reachable != Some(true)
+                || self.gateway_reachable == Some(true))
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

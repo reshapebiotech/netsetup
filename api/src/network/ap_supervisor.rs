@@ -68,6 +68,11 @@ impl ApSupervisorMachine {
         self.boot_decision_resolved
     }
 
+    pub fn resolve(&mut self, reason: &str) {
+        self.boot_decision_resolved = true;
+        self.last_reason = reason.into();
+    }
+
     pub fn set_persistent_enabled(&mut self, value: bool) {
         if self.persistent_enabled == value {
             return;
@@ -166,6 +171,21 @@ impl ApSupervisorMachine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn completed_decision_survives_service_restart_during_boot_grace() {
+        let mut machine = ApSupervisorMachine::new();
+        machine.resolve("AP boot decision already made for this boot");
+        let decision = machine.step(SupervisorInput {
+            test_in_progress: false,
+            save_in_progress: false,
+            uplink_healthy: false,
+            hotspot_enabled: false,
+            boot_grace_elapsed: true,
+        });
+        assert!(decision.resolved);
+        assert_eq!(decision.action, None);
+    }
 
     #[test]
     fn waits_during_boot_grace_without_internet() {

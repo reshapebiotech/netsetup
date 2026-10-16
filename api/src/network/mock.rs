@@ -1,7 +1,7 @@
 use crate::network::types::{
     AccessPointControllerStatus, AccessPointPreferences, AccessPointStatus, ConnectionState,
-    Connectivity, EthernetNetwork, NetworkMacAddresses, NetworkSettings, NetworkTransport,
-    SavedNetwork, WifiNetwork,
+    Connectivity, ConnectivityReport, EthernetNetwork, NetworkMacAddresses, NetworkSettings,
+    NetworkTransport, SavedNetwork, WifiNetwork,
 };
 use crate::network::{NetworkController, NetworkError, Result as NetResult};
 use async_trait::async_trait;
@@ -78,7 +78,18 @@ impl MockNetworkController {
             };
 
             if ok {
-                record.state = ConnectionState::Connected;
+                record.state = ConnectionState::Connected(ConnectivityReport {
+                    interface: if transport == NetworkTransport::Wifi {
+                        "wlan0"
+                    } else {
+                        "eth0"
+                    }
+                    .into(),
+                    address: "192.168.1.42".into(),
+                    gateway_reachable: Some(true),
+                    internet_verified: ssid != "CoffeeShop_Guest",
+                    reshape_reachable: ssid != "CoffeeShop_Guest",
+                });
             } else {
                 record.state =
                     ConnectionState::Failed("Incorrect password or network out of range".into());
@@ -153,11 +164,11 @@ impl NetworkController for MockNetworkController {
                 .ok_or_else(|| NetworkError::NotFound("Test ID not found".into()))?
         };
 
-        if record.state != ConnectionState::Connected {
+        let ConnectionState::Connected(report) = record.state else {
             return Err(NetworkError::ConnectionFailed(
                 "Cannot save an unsuccessful test".into(),
             ));
-        }
+        };
 
         let display_name = match record.transport {
             NetworkTransport::Wifi => record.settings.ssid.unwrap_or_else(|| "Wi-Fi".into()),
@@ -172,6 +183,9 @@ impl NetworkController for MockNetworkController {
             managed: true,
         });
 
+        if let Some(record) = self.tests.lock().await.get_mut(&test_id) {
+            record.state = ConnectionState::Saved(report);
+        }
         Ok(())
     }
 

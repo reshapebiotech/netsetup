@@ -6,6 +6,13 @@ BIN_DEST="/opt/reshape-netsetup/reshape-netsetup"
 SERVICE_DEST="/etc/systemd/system/reshape-netsetup.service"
 RULES_DEST="/usr/local/bin/captive-portal-rules.sh"
 
+for cmd in nmcli busctl curl ping; do
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    echo "required command not found: $cmd" >&2
+    exit 1
+  fi
+done
+
 if [[ ! -f "${BIN_SRC}" ]]; then
   echo "binary not found: ${BIN_SRC}" >&2
   exit 1

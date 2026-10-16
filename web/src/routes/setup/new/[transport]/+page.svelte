@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { page } from '$app/stores';
+  import { page } from '$app/state';
   import { goto } from '$app/navigation';
   import Card from '$lib/components/ui/card.svelte';
   import Button from '$lib/components/ui/button.svelte';
@@ -14,30 +14,31 @@
   import { validateSettings } from '$lib/network/validators';
   import { onMount } from 'svelte';
 
-  let transport: Transport = 'wifi';
-  $: transport = ($page.params.transport === 'ethernet' ? 'ethernet' : 'wifi') as Transport;
+  const transport = $derived<Transport>(page.params.transport === 'ethernet' ? 'ethernet' : 'wifi');
 
-  let wifiNetworks: WifiNetwork[] = [];
-  let wifiLoading = false;
-  let wifiError = '';
+  let wifiNetworks = $state<WifiNetwork[]>([]);
+  let wifiLoading = $state(false);
+  let wifiError = $state('');
 
-  let ssid = '';
-  let hiddenSsid = false;
-  let password = '';
-  let showPassword = false;
-  let enterprise = false;
-  let eapLogin = '';
-  let eapPassword = '';
-  let showEapPassword = false;
+  let ssid = $state('');
+  let hiddenSsid = $state(false);
+  const openNetwork = $derived(!hiddenSsid && wifiNetworks.some((network) =>
+    network.ssid === ssid && ['', '--', 'none'].includes(network.security.trim().toLowerCase())));
+  let password = $state('');
+  let showPassword = $state(false);
+  let enterprise = $state(false);
+  let eapLogin = $state('');
+  let eapPassword = $state('');
+  let showEapPassword = $state(false);
 
-  let ipMethod: 'auto' | 'manual' = 'auto';
-  let ipv4Address = '';
-  let ipv4Prefix = '24';
-  let ipv4Gateway = '';
-  let dnsRaw = '';
+  let ipMethod = $state<'auto' | 'manual'>('auto');
+  let ipv4Address = $state('');
+  let ipv4Prefix = $state('24');
+  let ipv4Gateway = $state('');
+  let dnsRaw = $state('');
 
-  let submitError = '';
-  let submitting = false;
+  let submitError = $state('');
+  let submitting = $state(false);
 
   async function loadWifi() {
     if (transport !== 'wifi') return;
@@ -61,6 +62,7 @@
       ssid,
       password,
       enterprise,
+      openNetwork,
       eapLogin,
       eapPassword,
       ipMethod,
@@ -74,7 +76,7 @@
   async function startTest() {
     submitError = '';
     const settings = buildSettings();
-    const errors = validateSettings(transport, settings, enterprise);
+    const errors = validateSettings(transport, settings, enterprise, !openNetwork);
     if (errors.length) {
       submitError = errors[0];
       return;
@@ -154,7 +156,7 @@
         Enterprise Wi-Fi (PEAP/MSCHAPv2)
       </label>
 
-      {#if !enterprise}
+      {#if !enterprise && !openNetwork}
         <label class="space-y-2 text-sm font-medium">
           Password
           <div class="flex items-center gap-2">

@@ -1,6 +1,7 @@
 mod ap_supervisor;
 pub mod mock;
 pub mod nmcli;
+mod transaction;
 pub mod types;
 
 use async_trait::async_trait;
@@ -28,6 +29,10 @@ pub enum NetworkError {
 pub type Result<T> = std::result::Result<T, NetworkError>;
 
 #[async_trait]
+#[allow(
+    clippy::double_must_use,
+    reason = "async_trait marks its boxed futures must_use"
+)]
 pub trait NetworkController: Send + Sync {
     /// Scan for available Wi-Fi networks
     async fn scan_wifi(&self) -> Result<Vec<WifiNetwork>>;

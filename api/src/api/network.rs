@@ -10,7 +10,6 @@ use std::net::Ipv4Addr;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::branding::BrandingConfig;
 use crate::network::types::{
     AccessPointControllerStatus, AccessPointPreferences, AccessPointStatus, ConnectionState,
     Connectivity, EthernetNetwork, NetworkMacAddresses, NetworkSettings, SavedNetwork, WifiNetwork,
@@ -20,7 +19,6 @@ use crate::network::{NetworkController, NetworkError};
 #[derive(Clone)]
 pub struct AppState {
     pub network: Arc<dyn NetworkController>,
-    pub branding: BrandingConfig,
 }
 
 pub fn router() -> Router<AppState> {
@@ -268,10 +266,47 @@ mod tests {
         let mock_controller = Arc::new(MockNetworkController::new());
         let state = AppState {
             network: mock_controller,
-            branding: crate::branding::BrandingConfig::default(),
         };
         let app = router().with_state(state);
         TestServer::new(app)
+    }
+
+    #[tokio::test]
+    async fn local_only_test_reports_checks_and_can_be_saved() {
+        let server = get_test_server();
+        let response = server
+            .post("/wifi/test")
+            .json(&json!({"ssid": "CoffeeShop_Guest"}))
+            .await;
+        response.assert_status(axum::http::StatusCode::ACCEPTED);
+        let test_id = response.json::<serde_json::Value>()["test_id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let status_url = format!("/status/{test_id}");
+        let report = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            loop {
+                let status = server.get(&status_url).await.json::<serde_json::Value>();
+                if status["status"] != "Testing" {
+                    break status;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(report["status"], "Connected");
+        assert_eq!(report["detail"]["gateway_reachable"], true);
+        assert_eq!(report["detail"]["internet_verified"], false);
+        assert_eq!(report["detail"]["reshape_reachable"], false);
+        server
+            .post(&format!("/tests/{test_id}/save"))
+            .await
+            .assert_status(axum::http::StatusCode::ACCEPTED);
+        assert_eq!(
+            server.get(&status_url).await.json::<serde_json::Value>()["status"],
+            "Saved"
+        );
     }
 
     #[tokio::test]

@@ -2,7 +2,9 @@ export type Transport = 'wifi' | 'ethernet';
 
 export type ConnectionState =
   | { status: 'Testing' }
-  | { status: 'Connected' }
+  | { status: 'Connected'; detail: ConnectivityReport }
+  | { status: 'Saving' }
+  | { status: 'Saved'; detail: ConnectivityReport }
   | { status: 'Failed'; detail: string };
 
 export interface WifiNetwork {
@@ -72,7 +74,6 @@ export interface BrandingConfig {
   support_text: string;
   success_message: string;
   logo_path: string;
-  background_path: string;
   favicon_path: string;
   help_title: string;
   help_text: string;
@@ -82,4 +83,12 @@ export interface BrandingConfig {
 export interface HelpLink {
   label: string;
   url: string;
+}
+
+export interface ConnectivityReport {
+  interface: string;
+  address: string;
+  gateway_reachable: boolean | null;
+  internet_verified: boolean;
+  reshape_reachable: boolean;
 }

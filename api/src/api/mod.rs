@@ -1,12 +1,8 @@
-pub mod branding;
 pub mod network;
 
-use axum::{Router, routing::get};
-
 use crate::api::network::AppState;
+use axum::Router;
 
 pub fn router() -> Router<AppState> {
-    Router::new()
-        .nest("/network", network::router())
-        .route("/branding", get(branding::get_branding))
+    Router::new().nest("/network", network::router())
 }

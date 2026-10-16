@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { page } from '$app/stores';
+  import { page } from '$app/state';
   import { goto } from '$app/navigation';
   import Card from '$lib/components/ui/card.svelte';
   import Button from '$lib/components/ui/button.svelte';
@@ -8,17 +8,15 @@
   import Loading from '$lib/components/ui/loading.svelte';
   import Icon from '$lib/components/ui/icon.svelte';
   import { networkApi } from '$lib/network/api';
-  import type { ConnectionState, Transport } from '$lib/network/types';
+  import { resultSummary } from '$lib/network/results';
+  import type { ConnectionState } from '$lib/network/types';
 
-  let transport: Transport = 'wifi';
-  let testId = '';
-  let status: ConnectionState | null = null;
-  let loading = true;
-  let movingToSave = false;
-  let error = '';
-
-  $: transport = ($page.params.transport === 'ethernet' ? 'ethernet' : 'wifi') as Transport;
-  $: testId = $page.params.testId ?? '';
+  const transport = $derived(page.params.transport === 'ethernet' ? 'ethernet' : 'wifi');
+  const testId = $derived(page.params.testId ?? '');
+  let status = $state<ConnectionState | null>(null);
+  let loading = $state(true);
+  let movingToSave = $state(false);
+  let error = $state('');
 
   async function loadStatus() {
     loading = true;
@@ -38,15 +36,16 @@
   }
 
   async function retry() {
+    error = '';
     try {
       await networkApi.discardTest(testId);
-    } catch {
-      // best effort
+      await goto(`/setup/new/${transport}`);
+    } catch (e) {
+      error = e instanceof Error ? e.message : 'Could not discard this test';
     }
-    await goto(`/setup/new/${transport}`);
   }
 
-  onMount(loadStatus);
+  onMount(() => { void loadStatus(); });
 </script>
 
 <div class="space-y-6">
@@ -57,55 +56,46 @@
       {transport === 'wifi' ? 'Wi-Fi' : 'Ethernet'} test complete
     </h1>
   </header>
-
   <Card className="space-y-4">
     {#if loading}
       <Loading label="Loading test result…" />
     {:else if error}
       <Alert tone="error">{error}</Alert>
+      <Button onclick={loadStatus}>Reload result</Button>
     {:else if status?.status === 'Connected'}
-      <Alert tone="info">
-        <span class="flex items-center gap-2">
-          <Icon name="check" className="h-4 w-4 text-primary" />
-          Connection test succeeded.
-        </span>
-      </Alert>
-      <p class="text-sm text-muted-foreground">Do you want to save this as the active managed network? This replaces the previous profile.</p>
-      <div class="flex items-center gap-3">
+      <Alert tone="info">{resultSummary(status.detail)}</Alert>
+      <dl class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+        <dt>Network connected</dt><dd>{status.detail.interface} · {status.detail.address}</dd>
+        <dt>Gateway reachable</dt>
+        <dd>{status.detail.gateway_reachable === null ? 'No gateway configured' : status.detail.gateway_reachable ? 'Verified' : 'Could not verify'}</dd>
+        <dt>Internet access</dt><dd>{status.detail.internet_verified ? 'Verified' : 'Could not verify'}</dd>
+        <dt>Reshape service</dt><dd>{status.detail.reshape_reachable ? 'Reachable' : 'Could not reach'}</dd>
+      </dl>
+      {#if !status.detail.reshape_reachable}
+        <p class="text-sm text-muted-foreground">
+          You can save this connection, but the device may be unable to communicate with Reshape.
+          A firewall, DNS settings, or a service outage may prevent these checks from succeeding.
+        </p>
+      {/if}
+      <p class="text-sm text-muted-foreground">Your previous connection has been restored. Saving will apply these settings and replace the previous {transport === 'wifi' ? 'Wi-Fi' : 'Ethernet'} profile.</p>
+      <div class="flex flex-wrap items-center gap-3">
         <Button onclick={save} loading={movingToSave}>
-          {#if !movingToSave}
-            <span class="mr-2 inline-flex items-center"><Icon name="save" /></span>
-          {/if}
-          Save connection
+          <span class="mr-2 inline-flex items-center"><Icon name="save" /></span>
+          {status.detail.reshape_reachable ? 'Save connection' : 'Save anyway'}
         </Button>
-        <Button variant="secondary" onclick={retry}>
-          <span class="mr-2 inline-flex items-center"><Icon name="refresh" /></span>
-          Try a different network
-        </Button>
+        <Button variant="secondary" onclick={retry}>Try a different network</Button>
       </div>
     {:else if status?.status === 'Failed'}
-      <Alert tone="error">
-        <span class="flex items-center gap-2">
-          <Icon name="alert" className="h-4 w-4 text-destructive" />
-          {status.detail}
-        </span>
-      </Alert>
-      <div class="flex items-center gap-3">
-        <Button onclick={retry}>
-          <span class="mr-2 inline-flex items-center"><Icon name="refresh" /></span>
-          Try again
-        </Button>
-        <Button variant="secondary" onclick={() => goto('/')}>
-          <span class="mr-2 inline-flex items-center"><Icon name="home" /></span>
-          Back to home
-        </Button>
-      </div>
+      <Alert tone="error">{status.detail}</Alert>
+      <Button onclick={retry}>Try again</Button>
+    {:else if status?.status === 'Saved'}
+      <Alert tone="info">This connection has already been saved.</Alert>
+      <Button onclick={() => goto('/')}>Back to home</Button>
     {:else}
-      <Alert tone="info">Test is still in progress. Return to testing view.</Alert>
-      <Button onclick={() => goto(`/setup/new/${transport}/testing/${testId}`)}>
-        <span class="mr-2 inline-flex items-center"><Icon name="back" /></span>
-        Back to testing
-      </Button>
+      <Alert tone="info">The network operation is still in progress.</Alert>
+      <Button onclick={() => goto(status?.status === 'Saving'
+        ? `/setup/new/${transport}/save-handoff/${testId}`
+        : `/setup/new/${transport}/testing/${testId}`)}>Check progress</Button>
     {/if}
   </Card>
 </div>

@@ -1,7 +1,7 @@
 [Unit]
 Description=Reshape Netsetup Service
-After=network-online.target NetworkManager.service
-Wants=network-online.target
+After=NetworkManager.service
+Requires=NetworkManager.service
 
 [Service]
 Type=simple
@@ -14,6 +14,9 @@ Environment=APP_PORT=3000
 Environment=AP_IFACE=wlan0
 Environment=CAPTIVE_IP=10.42.0.1
 Environment=CONNECTIVITY_PROBE_TARGET=1.1.1.1
+Environment=AP_BOOT_GRACE_SECONDS=90
+RuntimeDirectory=reshape-netsetup
+RuntimeDirectoryPreserve=yes
 WorkingDirectory=/opt/reshape-netsetup
 ExecStartPre=/usr/local/bin/captive-portal-rules.sh up
 ExecStart=/opt/reshape-netsetup/reshape-netsetup

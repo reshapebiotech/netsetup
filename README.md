@@ -40,13 +40,13 @@ You can run the stack locally with the mock controller.
 Run API tests:
 
 ```sh
-cargo test -p api --bin reshape-netsetup
+cargo nextest run -p api --bin reshape-netsetup
 ```
 
 Run deeper local property-test sessions:
 
 ```sh
-PROPTEST_CASES=5000 PROPTEST_MAX_SHRINK_ITERS=20000 cargo test -p api --bin reshape-netsetup network::ap_supervisor -- --nocapture
+env PROPTEST_CASES=5000 PROPTEST_MAX_SHRINK_ITERS=20000 cargo nextest run -p api --bin reshape-netsetup -E 'test(network::ap_supervisor)'
 ```
 
 Regression seeds for proptest are kept in `proptest-regressions/`.
@@ -62,7 +62,7 @@ bun run test:unit
 Run browser E2E (headless, using local Chromium on macOS):
 
 ```sh
-PLAYWRIGHT_CHROMIUM_PATH=/Applications/Chromium.app/Contents/MacOS/Chromium bun run test:e2e
+env PLAYWRIGHT_CHROMIUM_PATH=/Applications/Chromium.app/Contents/MacOS/Chromium bun run test:e2e
 ```
 
 ## Build + Run API
@@ -125,34 +125,61 @@ sudo systemctl daemon-reload
 sudo systemctl restart reshape-netsetup
 ```
 
-## Branding configuration
+## Reshape branding
 
-Branding is loaded by the API from TOML and exposed at `GET /api/branding`.
+Reshape copy and the support link live in `web/src/lib/branding.ts`. The logo and
+favicon live in `web/static/branding/` and are embedded with the frontend in release
+builds. No runtime branding configuration or separately installed assets are needed.
 
-- Default path: `/etc/reshape-netsetup/branding.toml`
-- Override with `BRANDING_CONFIG_PATH=/custom/path.toml`
-- Branding assets are served from the branding TOML directory by default
-- Optional override: `BRANDING_ASSETS_DIR=/custom/assets/dir`
-- Missing/invalid file falls back to built-in defaults
-- Starter template: `deploy/branding.example.toml`
-- Local dev profile used by `just dev`: `deploy/branding.reshape.toml`
-- Local dev assets are in `deploy/logo.png` and `deploy/favicon.ico`
+## Connection testing
 
-Example:
+Tests use NetworkManager checkpoints through its system D-Bus API, accessed with
+`busctl`. The target device needs NetworkManager with checkpoint support,
+`busctl` with JSON output, `curl`, `ping`, and a working CA certificate bundle.
+The installer checks that the required commands exist.
 
-```toml
-product_name = "Reshape Netsetup"
-company_name = "Reshape Biotech"
-headline = "Network configuration"
-support_text = "Connect this device to your network."
-success_message = "Your device is now online and ready to use."
-logo_path = "/branding/logo.png"
-background_path = ""
-favicon_path = "/branding/favicon.ico"
-help_title = "Need help?"
-help_text = "Use the resources below for setup guidance."
+Only one network-changing operation runs at a time. Each test creates a unique
+profile with autoconnect disabled and a 120-second rollback deadline. Existing
+profiles are preserved. Tests restore the previous connection even when successful,
+then publish their result so the user can reconnect to setup Wi-Fi and review it.
+NetworkManager also rolls back if the application stops during the test.
 
-[[help_links]]
-label = "Setup guide"
-url = "https://example.com/setup-guide"
-```
+The result distinguishes:
+
+- Network connection and a usable IPv4 address.
+- Gateway response to an interface-bound ping, or no configured gateway.
+- Internet access: an HTTPS request to
+  `https://connectivitycheck.gstatic.com/generate_204` returns an empty HTTP 204.
+- Reshape reachability: an authenticated HTTPS response below HTTP 500 from
+  `https://ris-api.reshapebiotech.com`. Authentication errors and a missing root
+  route still prove that the service is reachable.
+
+DNS queries use the tested interface and its IPv4 DNS servers; HTTPS and gateway
+probes are also bound to that interface. Another uplink cannot make these probes
+pass. Blocked probes are shown as unverified rather than proof of an outage.
+The checks currently cover IPv4; DNS responses requiring TCP fallback remain unverified.
+
+Wi-Fi uses `AP_IFACE` (default `wlan0`) when available. Ethernet testing requires
+one Ethernet interface; ambiguous interface selection is rejected.
+
+A locally connected network can be saved with **Save anyway**. Save applies a new
+profile under another checkpoint and repeats the checks. It commits only if the
+checks that succeeded during the test still succeed, then removes the superseded
+managed profile. Failure restores the previous connection. The UI polls the actual
+save state; a lost response is never presented as confirmed success.
+
+## Boot access point policy
+
+Automatic AP startup is limited to one decision per device boot. The default
+`AP_BOOT_GRACE_SECONDS=90` allows existing networks to connect first. If internet
+is observed, the decision is complete; otherwise the AP is enabled after the grace
+period. Later internet outages do not enable it.
+
+The service starts after NetworkManager without waiting for `network-online.target`.
+It uses device uptime, and stores completed decisions under
+`/run/reshape-netsetup/boot-decision` so service restarts do not repeat the decision.
+The supplied systemd unit preserves this directory across service restarts; reboot
+clears it. Starting the service after the boot grace period skips automatic startup.
+
+Manual AP activation, resetting network settings, and checkpoint restoration during
+configuration are deliberate exceptions to boot-only automatic startup.

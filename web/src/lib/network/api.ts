@@ -1,7 +1,6 @@
 import type {
   AccessPointControllerStatus,
   AccessPointPreferences,
-  BrandingConfig,
   NetworkMacAddresses,
   ConnectionState,
   Connectivity,
@@ -111,12 +110,6 @@ export const networkApi = {
       TIMEOUT_SLOW_MS
     );
     await parseOrThrow(res);
-  },
-
-  async getBranding(): Promise<BrandingConfig> {
-    const res = await withTimeout('/api/branding');
-    await parseOrThrow(res);
-    return res.json();
   },
 
   async startTest(transport: Transport, settings: NetworkSettings): Promise<string> {
