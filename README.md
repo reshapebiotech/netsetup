@@ -6,6 +6,11 @@ Wi-Fi or Ethernet through a local captive portal, without needing internet acces
 Runs on 64-bit Debian/Raspberry Pi OS 12+ with NetworkManager. The Rust binary
 includes the web interface.
 
+<p align="center">
+  <img src="docs/screenshots/network-configuration.png" alt="Network configuration overview" width="48%">
+  <img src="docs/screenshots/wifi-configuration.png" alt="Wi-Fi configuration and connection testing" width="48%">
+</p>
+
 ## Features
 
 - Configure Wi-Fi and Ethernet with DHCP or static IP and DNS settings.
@@ -37,7 +42,6 @@ The boot window is configurable with `AP_BOOT_GRACE_SECONDS`.
 
 ## Installation
 
-See [INSTALL.md](INSTALL.md) for release bundles, minimal configuration, upgrades,
-and migration from the Docker installation.
+See [INSTALL.md](INSTALL.md) for release bundles, minimal configuration, and upgrades.
 
 Licensed under [Apache-2.0](LICENSE).

@@ -9,18 +9,19 @@ OUTPUT_DIR="$REPO_DIR/dist"
 NAME="reshape-netsetup-$VERSION-linux-arm64"
 WORK="$(mktemp -d)"
 trap 'rm -rf -- "$WORK"' EXIT
-mkdir -p "$WORK/$NAME" "$OUTPUT_DIR"
+mkdir -p "$WORK/$NAME/docs/screenshots" "$OUTPUT_DIR"
 install -m 0755 "$BINARY" "$WORK/$NAME/reshape-netsetup"
 install -m 0755 "$REPO_DIR/deploy/scripts/install-rpi.sh" "$WORK/$NAME/install.sh"
 install -m 0755 "$REPO_DIR/deploy/scripts/captive-portal-rules.sh" "$WORK/$NAME/captive-portal-rules.sh"
 install -m 0644 "$REPO_DIR/deploy/systemd/reshape-netsetup.service" "$WORK/$NAME/reshape-netsetup.service"
 install -m 0644 "$REPO_DIR/deploy/config.example.toml" "$WORK/$NAME/config.example.toml"
 install -m 0644 "$REPO_DIR/README.md" "$WORK/$NAME/README.md"
+install -m 0644 "$REPO_DIR/docs/screenshots/"*.png "$WORK/$NAME/docs/screenshots/"
 install -m 0644 "$REPO_DIR/INSTALL.md" "$WORK/$NAME/INSTALL.md"
 install -m 0644 "$REPO_DIR/LICENSE" "$WORK/$NAME/LICENSE"
 python3 "$REPO_DIR/deploy/scripts/third-party-licenses.py" "$WORK/$NAME/THIRD_PARTY_LICENSES.txt"
 printf '%s\n' "$VERSION" > "$WORK/$NAME/VERSION"
-(cd "$WORK/$NAME" && shasum -a 256 reshape-netsetup install.sh captive-portal-rules.sh reshape-netsetup.service config.example.toml README.md INSTALL.md LICENSE THIRD_PARTY_LICENSES.txt VERSION > SHA256SUMS)
+(cd "$WORK/$NAME" && shasum -a 256 reshape-netsetup install.sh captive-portal-rules.sh reshape-netsetup.service config.example.toml README.md INSTALL.md LICENSE THIRD_PARTY_LICENSES.txt VERSION docs/screenshots/*.png > SHA256SUMS)
 tar -czf "$OUTPUT_DIR/$NAME.tar.gz" -C "$WORK" "$NAME"
 (cd "$OUTPUT_DIR" && shasum -a 256 "$NAME.tar.gz" > "$NAME.tar.gz.sha256")
 printf '%s\n' "$OUTPUT_DIR/$NAME.tar.gz"
