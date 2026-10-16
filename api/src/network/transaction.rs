@@ -1,7 +1,12 @@
 use super::nmcli::{build_nmcli_connection_args, parse_nmcli_terse_line};
-use super::types::{ConnectivityReport, NetworkSettings, NetworkTransport};
+use super::types::{
+    ConnectivityReport, CurrentConnectionCheck, EndpointGroupResult, NetworkSettings,
+    NetworkTransport,
+};
 use super::{NetworkError, Result};
+use crate::config::EndpointGroup;
 use async_trait::async_trait;
+use futures_util::future::join_all;
 use hickory_server::proto::{
     op::{Message, MessageType, OpCode, Query, ResponseCode},
     rr::{Name, RData, RecordType},
@@ -78,7 +83,9 @@ impl Commands for SystemCommands {
                 "{program} could not complete the network operation"
             )));
         }
-        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+        Ok(String::from_utf8_lossy(&output.stdout)
+            .trim_end_matches(['\r', '\n'])
+            .to_string())
     }
 }
 
@@ -169,6 +176,7 @@ pub(super) async fn run(
     interface: &str,
     previous: Option<&ConnectivityReport>,
     old_profile: Option<&str>,
+    groups: &[EndpointGroup],
 ) -> Result<ConnectivityReport> {
     let original = nmcli(
         commands,
@@ -193,7 +201,7 @@ pub(super) async fn run(
             let reason = nmcli(commands, &["-g", "GENERAL.REASON", "device", "show", interface]).await.unwrap_or_default();
             return Err(activation_error(&reason, transport));
         }
-        let report = probe(commands, interface).await?;
+        let report = probe(commands, interface, groups).await?;
         if let Some(previous) = previous {
             if !report.preserves(previous) {
                 return Err(NetworkError::ConnectionFailed(
@@ -243,7 +251,76 @@ pub(super) async fn run(
     Ok(report)
 }
 
-async fn probe(commands: &impl Commands, interface: &str) -> Result<ConnectivityReport> {
+pub(super) async fn check_current_connections(
+    commands: &impl Commands,
+    groups: &[EndpointGroup],
+) -> Result<Vec<CurrentConnectionCheck>> {
+    let active = nmcli(
+        commands,
+        &[
+            "-t",
+            "-f",
+            "UUID,TYPE,DEVICE,NAME",
+            "connection",
+            "show",
+            "--active",
+        ],
+    )
+    .await?;
+    let mut checks = Vec::new();
+    for line in active.lines() {
+        let fields = parse_nmcli_terse_line(line);
+        if fields.len() != 4 || fields[2].is_empty() || fields[2] == "--" {
+            continue;
+        }
+        match fields[1].as_str() {
+            "802-11-wireless" => {
+                let mode = nmcli(
+                    commands,
+                    &[
+                        "-g",
+                        "802-11-wireless.mode",
+                        "connection",
+                        "show",
+                        "uuid",
+                        &fields[0],
+                    ],
+                )
+                .await?;
+                if mode.trim() == "ap" {
+                    continue;
+                }
+            }
+            "802-3-ethernet" => {}
+            _ => continue,
+        }
+        checks.push(async move {
+            let result =
+                timeout(Duration::from_secs(45), probe(commands, &fields[2], groups)).await;
+            let (report, error) = match result {
+                Ok(Ok(report)) => (Some(report), None),
+                Ok(Err(error)) => (None, Some(error.to_string())),
+                Err(_) => (
+                    None,
+                    Some("The connectivity check timed out. Try again.".into()),
+                ),
+            };
+            CurrentConnectionCheck {
+                name: fields[3].clone(),
+                interface: fields[2].clone(),
+                report,
+                error,
+            }
+        });
+    }
+    Ok(join_all(checks).await)
+}
+
+async fn probe(
+    commands: &impl Commands,
+    interface: &str,
+    groups: &[EndpointGroup],
+) -> Result<ConnectivityReport> {
     let addresses = nmcli(
         commands,
         &["-g", "IP4.ADDRESS", "device", "show", interface],
@@ -281,7 +358,7 @@ async fn probe(commands: &impl Commands, interface: &str) -> Result<Connectivity
             None
         }
     };
-    let (gateway_reachable, internet_verified, reshape_reachable) = tokio::join!(
+    let (gateway_reachable, internet_verified, endpoint_groups) = tokio::join!(
         gateway_check,
         http_probe(
             commands,
@@ -291,22 +368,59 @@ async fn probe(commands: &impl Commands, interface: &str) -> Result<Connectivity
             "https://connectivitycheck.gstatic.com/generate_204",
             true
         ),
-        http_probe(
-            commands,
-            interface,
-            address,
-            &dns,
-            "https://ris-api.reshapebiotech.com",
-            false
-        ),
+        probe_groups(commands, interface, address, &dns, groups),
     );
     Ok(ConnectivityReport {
         interface: interface.into(),
         address: address.to_string(),
         gateway_reachable,
         internet_verified,
-        reshape_reachable,
+        endpoint_groups,
     })
+}
+
+async fn probe_groups(
+    commands: &impl Commands,
+    interface: &str,
+    source: Ipv4Addr,
+    dns: &[Ipv4Addr],
+    groups: &[EndpointGroup],
+) -> Vec<EndpointGroupResult> {
+    let jobs: Vec<_> = groups
+        .iter()
+        .enumerate()
+        .flat_map(|(group_index, group)| {
+            group
+                .endpoints
+                .iter()
+                .enumerate()
+                .map(move |(endpoint_index, endpoint)| (group_index, endpoint_index, endpoint))
+        })
+        .collect();
+    let mut results = Vec::new();
+    for batch in jobs.chunks(6) {
+        let mut checks = Vec::new();
+        for &(group_index, endpoint_index, endpoint) in batch {
+            checks.push(async move {
+                let reachable = timeout(
+                    Duration::from_secs(10),
+                    http_probe(commands, interface, source, dns, &endpoint.url, false),
+                )
+                .await
+                .unwrap_or(false);
+                (group_index, endpoint_index, reachable)
+            });
+        }
+        results.extend(join_all(checks).await);
+    }
+    let mut groups: Vec<_> = groups
+        .iter()
+        .map(|group| EndpointGroupResult::from_config(group, false))
+        .collect();
+    for (group, endpoint, reachable) in results {
+        groups[group].endpoints[endpoint].reachable = reachable;
+    }
+    groups
 }
 
 async fn http_probe(
@@ -317,42 +431,52 @@ async fn http_probe(
     url: &str,
     internet: bool,
 ) -> bool {
-    let host = url
-        .trim_start_matches("https://")
-        .split('/')
-        .next()
-        .unwrap_or_default();
-    let Ok(addresses) = resolve(interface, source, dns, host).await else {
+    let Ok(parsed) = url::Url::parse(url) else {
         return false;
     };
+    let Some(host) = parsed.host_str() else {
+        return false;
+    };
+    let port = parsed.port_or_known_default().unwrap_or(443);
+    let addresses = if let Ok(ip) = host.parse::<Ipv4Addr>() {
+        vec![ip]
+    } else {
+        let Ok(addresses) = resolve(interface, source, dns, host).await else {
+            return false;
+        };
+        addresses
+    };
     for address in addresses {
-        let result = commands
-            .run(
-                "curl",
-                &strings(&[
-                    "--silent",
-                    "--show-error",
-                    "--ipv4",
-                    "--noproxy",
-                    "*",
-                    "--interface",
-                    &format!("if!{interface}"),
-                    "--resolve",
-                    &format!("{host}:443:{address}"),
-                    "--connect-timeout",
-                    "3",
-                    "--max-time",
-                    "6",
-                    "--max-filesize",
-                    "65536",
-                    "--output",
-                    "/dev/null",
-                    "--write-out",
-                    "%{http_code}:%{size_download}",
-                    url,
-                ]),
-            )
-            .await;
+        let mut args = strings(&[
+            "--disable",
+            "--globoff",
+            "--proto",
+            "=https",
+            "--silent",
+            "--show-error",
+            "--ipv4",
+            "--noproxy",
+            "*",
+            "--interface",
+            &format!("if!{interface}"),
+            "--resolve",
+            &format!("{host}:{port}:{address}"),
+            "--connect-timeout",
+            "3",
+            "--max-time",
+            "6",
+            "--max-filesize",
+            "65536",
+            "--output",
+            "/dev/null",
+            "--write-out",
+            "%{http_code}:%{size_download}",
+            parsed.as_str(),
+        ]);
+        if !internet {
+            args.insert(1, "--head".into());
+        }
+        let result = commands.run("curl", &args).await;
         if let Ok(response) = result
             && response_verifies(&response, internet)
         {
@@ -453,6 +577,151 @@ mod tests {
     use super::*;
     use std::sync::Mutex;
 
+    async fn run(
+        commands: &impl Commands,
+        settings: &NetworkSettings,
+        transport: &NetworkTransport,
+        interface: &str,
+        previous: Option<&ConnectivityReport>,
+        old_profile: Option<&str>,
+    ) -> Result<ConnectivityReport> {
+        super::run(
+            commands,
+            settings,
+            transport,
+            interface,
+            previous,
+            old_profile,
+            &[],
+        )
+        .await
+    }
+
+    struct EndpointCommands;
+    #[async_trait]
+    impl Commands for EndpointCommands {
+        async fn run(&self, program: &str, args: &[String]) -> Result<String> {
+            assert_eq!(program, "curl");
+            assert_eq!(args[0], "--disable");
+            assert!(args.contains(&"--head".into()));
+            assert!(args.contains(&"if!wlan0".into()));
+            assert!(args.contains(&"192.0.2.1:8443:192.0.2.1".into()));
+            assert!(!args.contains(&"--location".into()));
+            assert!(!args.contains(&"--insecure".into()));
+            let url = args.last().unwrap();
+            Ok(if url.ends_with("/api") {
+                "401:0"
+            } else if url.ends_with("/images") {
+                "403:0"
+            } else {
+                "503:0"
+            }
+            .into())
+        }
+    }
+    fn endpoint_groups() -> Vec<EndpointGroup> {
+        vec![EndpointGroup {
+            name: "Core".into(),
+            required: true,
+            endpoints: ["api", "images", "unavailable"]
+                .map(|name| crate::config::Endpoint {
+                    name: name.into(),
+                    url: format!("https://192.0.2.1:8443/{name}"),
+                    description: String::new(),
+                })
+                .to_vec(),
+        }]
+    }
+    #[tokio::test]
+    async fn grouped_probes_accept_authentication_responses_and_preserve_configured_order() {
+        let groups = probe_groups(
+            &EndpointCommands,
+            "wlan0",
+            Ipv4Addr::new(192, 168, 1, 42),
+            &[],
+            &endpoint_groups(),
+        )
+        .await;
+        assert_eq!(
+            groups[0]
+                .endpoints
+                .iter()
+                .map(|e| e.reachable)
+                .collect::<Vec<_>>(),
+            vec![true, true, false]
+        );
+        assert_eq!(groups[0].endpoints[1].name, "images");
+    }
+    #[test]
+    fn save_preservation_detects_individual_endpoint_regressions() {
+        let groups = endpoint_groups();
+        let previous = ConnectivityReport {
+            endpoint_groups: vec![EndpointGroupResult::from_config(&groups[0], true)],
+            ..local_report()
+        };
+        let mut current = previous.clone();
+        current.endpoint_groups[0].endpoints[1].reachable = false;
+        assert!(!current.preserves(&previous));
+        assert!(previous.preserves(&current));
+    }
+    #[tokio::test]
+    async fn an_endpoint_regression_rolls_back_without_deleting_the_saved_profile() {
+        let commands = FakeCommands::default();
+        let groups = endpoint_groups();
+        let previous = ConnectivityReport {
+            endpoint_groups: vec![EndpointGroupResult::from_config(&groups[0], true)],
+            ..local_report()
+        };
+        let error = super::run(
+            &commands,
+            &settings(),
+            &NetworkTransport::Wifi,
+            "wlan0",
+            Some(&previous),
+            Some("old-uuid"),
+            &groups,
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("checks it passed during testing")
+        );
+        let calls = commands.calls.lock().unwrap();
+        assert!(calls.iter().any(|call| call.contains("CheckpointRollback")));
+        assert!(!calls.iter().any(|call| call.contains("connection delete")));
+    }
+
+    struct ReadOnlyCommands;
+    #[async_trait]
+    impl Commands for ReadOnlyCommands {
+        async fn run(&self, program: &str, args: &[String]) -> Result<String> {
+            let call = format!("{program} {}", args.join(" "));
+            match call.as_str() {
+                "nmcli -t -f UUID,TYPE,DEVICE,NAME connection show --active" => Ok("ap-id:802-11-wireless:wlan0:Device AP\neth-id:802-3-ethernet:eth0:Wired\nloopback:loopback:lo:lo".into()),
+                "nmcli -g 802-11-wireless.mode connection show uuid ap-id" => Ok("ap".into()),
+                "nmcli -g IP4.ADDRESS device show eth0" => Ok("192.168.1.42/24".into()),
+                "nmcli -g IP4.GATEWAY device show eth0" => Ok("192.168.1.1".into()),
+                "nmcli -g IP4.DNS device show eth0" => Ok(String::new()),
+                "ping -I eth0 -c 1 -W 2 192.168.1.1" => Ok(String::new()),
+                _ => panic!("Unexpected operation in read-only check: {call}"),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn current_checks_skip_access_points_and_never_modify_connections() {
+        let results = check_current_connections(&ReadOnlyCommands, &[])
+            .await
+            .unwrap();
+        assert_eq!(results.len(), 1);
+        let report = results[0].report.as_ref().unwrap();
+        assert_eq!(report.interface, "eth0");
+        assert_eq!(report.gateway_reachable, Some(true));
+        assert!(!report.internet_verified);
+    }
+
     #[derive(Default)]
     struct FakeCommands {
         calls: Mutex<Vec<String>>,
@@ -550,7 +819,7 @@ mod tests {
             address: "192.168.1.42".into(),
             gateway_reachable: Some(true),
             internet_verified: false,
-            reshape_reachable: false,
+            endpoint_groups: vec![],
         }
     }
 
@@ -929,7 +1198,16 @@ mod tests {
         assert!(current.preserves(&previous));
         assert!(current.preserves(&local_report()));
         assert!(!current.preserves(&ConnectivityReport {
-            reshape_reachable: true,
+            endpoint_groups: vec![EndpointGroupResult {
+                name: "Core".into(),
+                required: true,
+                endpoints: vec![super::super::types::EndpointResult {
+                    name: "API".into(),
+                    url: "https://example.com".into(),
+                    description: String::new(),
+                    reachable: true
+                }]
+            }],
             ..previous
         }));
     }

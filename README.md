@@ -7,15 +7,15 @@ Runs on 64-bit Debian/Raspberry Pi OS 12+ with NetworkManager. The Rust binary
 includes the web interface.
 
 <p align="center">
-  <img src="docs/screenshots/network-configuration.png" alt="Network configuration overview" width="48%">
-  <img src="docs/screenshots/wifi-configuration.png" alt="Wi-Fi configuration and connection testing" width="48%">
+  <img src="docs/screenshots/network-configuration.png" alt="Network configuration overview" width="48%" align="top">
+  <img src="docs/screenshots/wifi-configuration.png" alt="Wi-Fi configuration and connection testing" width="48%" align="top">
 </p>
 
 ## Features
 
 - Configure Wi-Fi and Ethernet with DHCP or static IP and DNS settings.
 - Test a connection before saving it, with separate results for local network,
-  gateway, internet, and Reshape service reachability.
+  gateway, internet, and configurable groups of service endpoints.
 - Restore the previous connection after a test so you can rejoin setup Wi-Fi
   and review the result.
 - Roll back failed network changes using NetworkManager checkpoints.

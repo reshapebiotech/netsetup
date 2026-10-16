@@ -3,3 +3,19 @@
 password = "replace-with-device-wifi-password"
 # Optional: error, warn, info (default), debug, or trace.
 # log_level = "info"
+
+# Optional service checks. No product-specific endpoints are built into the binary.
+# [[connectivity.groups]]
+# name = "Core services"
+# required = true
+# endpoints = [
+#   { name = "API", url = "https://api.example.com", description = "Device communication" },
+#   { name = "Storage", url = "https://storage.example.com", description = "Image storage" },
+# ]
+#
+# [[connectivity.groups]]
+# name = "Device management"
+# required = false
+# endpoints = [
+#   { name = "Updates", url = "https://updates.example.com", description = "Software downloads" },
+# ]

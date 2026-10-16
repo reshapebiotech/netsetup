@@ -9,12 +9,19 @@
   import Loading from '#lib/components/ui/loading.svelte';
   import Icon from '#lib/components/ui/icon.svelte';
   import { networkApi } from '#lib/network/api.js';
-  import type { NetworkSettings, Transport, WifiNetwork } from '#lib/network/types.js';
+  import type { NetworkSettings, SavedNetworkDetails, Transport, WifiNetwork } from '#lib/network/types.js';
   import { buildSettingsFromForm } from '#lib/network/settings.js';
   import { validateSettings } from '#lib/network/validators.js';
   import { onMount } from 'svelte';
 
   const transport = $derived<Transport>(page.params.transport === 'ethernet' ? 'ethernet' : 'wifi');
+
+  const editId = $derived(page.url.searchParams.get('edit'));
+  let original = $state<SavedNetworkDetails | null>(null);
+  let profileLoading = $state(true);
+  let profileError = $state('');
+  let keepPassword = $state(true);
+
 
   let wifiNetworks = $state<WifiNetwork[]>([]);
   let wifiLoading = $state(false);
@@ -22,14 +29,20 @@
 
   let ssid = $state('');
   let hiddenSsid = $state(false);
-  const openNetwork = $derived(!hiddenSsid && wifiNetworks.some((network) =>
-    network.ssid === ssid && ['', '--', 'none'].includes(network.security.trim().toLowerCase())));
+  const openNetwork = $derived((original?.security === 'open' && ssid === original.settings.ssid) || (!hiddenSsid && wifiNetworks.some((network) =>
+    network.ssid === ssid && ['', '--', 'none'].includes(network.security.trim().toLowerCase()))));
   let password = $state('');
   let showPassword = $state(false);
   let enterprise = $state(false);
   let eapLogin = $state('');
   let eapPassword = $state('');
   let showEapPassword = $state(false);
+
+  const canKeepPassword = $derived(original !== null && original.security !== 'open'
+    && (transport !== 'wifi' || ssid === original.settings.ssid)
+    && enterprise === (original.security === 'enterprise')
+    && (!enterprise || eapLogin === original.settings.eap_login));
+  const retainingPassword = $derived(canKeepPassword && keepPassword);
 
   let ipMethod = $state<'auto' | 'manual'>('auto');
   let ipv4Address = $state('');
@@ -54,10 +67,37 @@
     }
   }
 
-  onMount(loadWifi);
+  onMount(() => {
+    void initialize();
+  });
+
+  async function initialize() {
+    if (editId) {
+      try {
+        original = await networkApi.getSaved(editId);
+        if (original.network.transport !== transport || original.edit_unavailable) {
+          throw new Error(original.edit_unavailable ?? 'This network uses a different connection type.');
+        }
+        const saved = original.settings;
+        ssid = saved.ssid ?? '';
+        enterprise = original.security === 'enterprise';
+        eapLogin = saved.eap_login ?? '';
+        ipMethod = saved.ipv4?.method ?? 'auto';
+        ipv4Address = saved.ipv4?.address_data?.[0]?.address ?? '';
+        ipv4Prefix = String(saved.ipv4?.address_data?.[0]?.prefix ?? 24);
+        ipv4Gateway = saved.ipv4?.gateway ?? '';
+        dnsRaw = saved.ipv4?.dns?.join(', ') ?? '';
+        hiddenSsid = transport === 'wifi';
+      } catch (e) {
+        profileError = e instanceof Error ? e.message : 'Could not load this network.';
+      } finally { profileLoading = false; }
+    }
+    profileLoading = false;
+    await loadWifi();
+  }
 
   function buildSettings(): NetworkSettings {
-    return buildSettingsFromForm({
+    const settings = buildSettingsFromForm({
       transport,
       ssid,
       password,
@@ -71,12 +111,19 @@
       ipv4Gateway,
       dnsRaw
     });
+    if (retainingPassword && editId) {
+      settings.id = editId;
+      delete settings.password;
+      delete settings.eap_password;
+    }
+    return settings;
   }
 
   async function startTest() {
+    if (profileLoading || profileError) return;
     submitError = '';
     const settings = buildSettings();
-    const errors = validateSettings(transport, settings, enterprise, !openNetwork);
+    const errors = validateSettings(transport, settings, enterprise, !openNetwork, retainingPassword);
     if (errors.length) {
       submitError = errors[0];
       return;
@@ -96,12 +143,18 @@
 
 <div class="space-y-6">
   <header class="space-y-2">
-    <p class="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">New {transport} profile</p>
-    <h1 class="flex items-center gap-2 text-3xl font-bold">
+    <p class="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">{editId ? 'Edit' : 'New'} {transport} profile</p>
+    <h1 class="flex items-center gap-2 text-3xl font-semibold">
       <Icon name={transport === 'wifi' ? 'wifi' : 'ethernet'} className="h-6 w-6 text-primary" />
       Configure and test
     </h1>
   </header>
+
+  {#if profileLoading}
+    <Loading label="Loading saved settings…" />
+  {:else if profileError}
+    <Alert tone="error">{profileError}</Alert>
+  {/if}
 
   {#if submitError}
     <Alert tone="error">{submitError}</Alert>
@@ -130,18 +183,18 @@
         <Loading label="Scanning nearby Wi-Fi networks…" />
       {/if}
 
-      <label class="flex items-center gap-2 text-sm">
+      <label class="flex min-h-11 items-center gap-2 text-sm">
         <input type="checkbox" bind:checked={hiddenSsid} class="rounded border-input" />
-        Hidden SSID
+        Enter network name manually
       </label>
 
       {#if hiddenSsid}
-        <label class="space-y-2 text-sm font-medium">
+        <label class="block space-y-2 text-sm font-medium">
           SSID
-          <Input bind:value={ssid} placeholder="Enter hidden network name" />
+          <Input bind:value={ssid} placeholder="Enter network name" />
         </label>
       {:else}
-        <label class="space-y-2 text-sm font-medium">
+        <label class="block space-y-2 text-sm font-medium">
           SSID
           <Select
             bind:value={ssid}
@@ -151,12 +204,19 @@
         </label>
       {/if}
 
-      <label class="flex items-center gap-2 text-sm">
+      <label class="flex min-h-11 items-center gap-2 text-sm">
         <input type="checkbox" bind:checked={enterprise} class="rounded border-input" />
         Enterprise Wi-Fi (PEAP/MSCHAPv2)
       </label>
 
-      {#if !enterprise && !openNetwork}
+      {#if !enterprise && canKeepPassword}
+        <label class="flex items-center gap-3 rounded-lg border border-border bg-background/30 px-3 py-3 text-sm">
+          <input type="checkbox" bind:checked={keepPassword} class="rounded border-input" />
+          Keep saved password
+        </label>
+      {/if}
+
+      {#if !enterprise && !openNetwork && !retainingPassword}
         <div class="space-y-2">
           <label for="wifi-password" class="block text-sm font-medium">Password</label>
           <div class="flex items-center gap-2">
@@ -185,7 +245,7 @@
         Ethernet authentication
       </h2>
 
-      <label class="flex items-center gap-2 text-sm">
+      <label class="flex min-h-11 items-center gap-2 text-sm">
         <input type="checkbox" bind:checked={enterprise} class="rounded border-input" />
         Wired 802.1X (PEAP/MSCHAPv2)
       </label>
@@ -198,10 +258,18 @@
         <Icon name="network" className="h-5 w-5 text-primary" />
         802.1X credentials
       </h2>
-      <label class="space-y-2 text-sm font-medium">
+      <label class="block space-y-2 text-sm font-medium">
         Identity
         <Input bind:value={eapLogin} placeholder="user@example.com" disabled={submitting} />
       </label>
+      {#if canKeepPassword}
+        <label class="flex items-center gap-3 rounded-lg border border-border bg-background/30 px-3 py-3 text-sm">
+          <input type="checkbox" bind:checked={keepPassword} class="rounded border-input" />
+          Keep saved password
+        </label>
+      {/if}
+
+      {#if !retainingPassword}
       <div class="space-y-2">
         <label for="enterprise-password" class="block text-sm font-medium">Password</label>
         <div class="flex items-center gap-2">
@@ -221,6 +289,7 @@
           </Button>
         </div>
       </div>
+      {/if}
     </Card>
   {/if}
 
@@ -230,29 +299,29 @@
       IPv4 and DNS
     </h2>
 
-    <label class="space-y-2 text-sm font-medium">
+    <label class="block space-y-2 text-sm font-medium">
       IPv4 method
       <Select bind:value={ipMethod} options={[{ label: 'Automatic (DHCP)', value: 'auto' }, { label: 'Manual', value: 'manual' }]} />
     </label>
 
     {#if ipMethod === 'manual'}
       <div class="grid gap-3 sm:grid-cols-2">
-        <label class="space-y-2 text-sm font-medium">
+        <label class="block space-y-2 text-sm font-medium">
           Address
           <Input bind:value={ipv4Address} placeholder="192.168.1.20" disabled={submitting} />
         </label>
-        <label class="space-y-2 text-sm font-medium">
+        <label class="block space-y-2 text-sm font-medium">
           Prefix
           <Input bind:value={ipv4Prefix} type="number" disabled={submitting} />
         </label>
       </div>
-      <label class="space-y-2 text-sm font-medium">
+      <label class="block space-y-2 text-sm font-medium">
         Gateway
         <Input bind:value={ipv4Gateway} placeholder="192.168.1.1" disabled={submitting} />
       </label>
     {/if}
 
-    <label class="space-y-2 text-sm font-medium">
+    <label class="block space-y-2 text-sm font-medium">
       Custom DNS servers (comma separated)
       <Input bind:value={dnsRaw} placeholder="1.1.1.1,8.8.8.8" disabled={submitting} />
       <p class="text-xs font-normal text-muted-foreground">
@@ -270,7 +339,7 @@
       <span class="mr-2 inline-flex items-center"><Icon name="back" /></span>
       Cancel
     </Button>
-    <Button onclick={startTest} loading={submitting}>
+    <Button onclick={startTest} loading={submitting} disabled={profileLoading || !!profileError}>
       {#if !submitting}
         <span class="mr-2 inline-flex items-center"><Icon name="check" /></span>
       {/if}

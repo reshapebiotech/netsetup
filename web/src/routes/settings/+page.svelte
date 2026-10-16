@@ -7,17 +7,16 @@
   import Loading from '#lib/components/ui/loading.svelte';
   import Icon from '#lib/components/ui/icon.svelte';
   import { networkApi } from '#lib/network/api.js';
-  import { branding } from '#lib/branding.js';
   import type { NetworkMacAddresses } from '#lib/network/types.js';
 
-  let apPersistent = false;
-  let apLoading = true;
-  let apSaving = false;
-  let apError = '';
-  let apSavedMessage = '';
-  let macsLoading = true;
-  let macsError = '';
-  let macs: NetworkMacAddresses = { wifi: [], ethernet: [] };
+  let apPersistent = $state(false);
+  let apLoading = $state(true);
+  let apSaving = $state(false);
+  let apError = $state('');
+  let apSavedMessage = $state('');
+  let macsLoading = $state(true);
+  let macsError = $state('');
+  let macs = $state<NetworkMacAddresses>({ wifi: [], ethernet: [] });
 
   async function loadApPreferences() {
     apLoading = true;
@@ -67,11 +66,11 @@
 
 <div class="space-y-6">
   <header class="space-y-2">
-    <p class="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">{$branding.product_name}</p>
-    <h1 class="flex items-center gap-2 text-3xl font-bold">
+    <h1 class="flex items-center gap-2 text-3xl font-semibold">
       <Icon name="settings" className="h-6 w-6 text-primary" />
       Settings
     </h1>
+    <p class="text-base text-muted-foreground">Device information and setup Wi-Fi preferences.</p>
   </header>
 
   <Card className="space-y-4">
@@ -80,7 +79,7 @@
       Setup Wi-Fi test mode
     </h2>
     <p class="text-sm text-muted-foreground">
-      Keep the setup access point available until this mode is turned off.
+      Keep setup Wi-Fi available until this mode is turned off. It can run alongside an Ethernet connection, so you can configure the device while it stays online.
     </p>
 
     {#if apLoading}
@@ -95,7 +94,9 @@
       <Alert tone="info">{apSavedMessage}</Alert>
     {/if}
 
-    <div class="flex items-center justify-between gap-3 rounded-md border border-border bg-white p-3">
+    <p class="text-sm text-muted-foreground">Testing another Wi-Fi network can still temporarily interrupt the setup access point.</p>
+
+    <div class="flex items-center justify-between gap-3 rounded-md border border-border bg-card p-3">
       <div class="space-y-1">
         <p class="text-sm font-medium">Keep setup access point available</p>
         <p class="text-xs text-muted-foreground">
@@ -109,15 +110,11 @@
         aria-label="Toggle setup Wi-Fi test mode"
         disabled={apLoading || apSaving}
         onclick={() => (apPersistent = !apPersistent)}
-        class={`relative inline-flex h-7 w-12 items-center rounded-full transition ${
-          apPersistent ? 'bg-primary' : 'bg-muted'
-        } disabled:cursor-not-allowed disabled:opacity-60`}
+        class="inline-flex h-11 w-14 shrink-0 items-center justify-center rounded-lg disabled:cursor-not-allowed disabled:opacity-60"
       >
-        <span
-          class={`inline-block h-5 w-5 transform rounded-full bg-white transition ${
-            apPersistent ? 'translate-x-6' : 'translate-x-1'
-          }`}
-        ></span>
+        <span class={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${apPersistent ? 'bg-primary' : 'bg-muted'}`}>
+          <span class={`inline-block h-5 w-5 rounded-full transition-transform ${apPersistent ? 'translate-x-6 bg-primary-foreground' : 'translate-x-1 bg-foreground'}`}></span>
+        </span>
       </button>
     </div>
 
@@ -155,7 +152,7 @@
       <div>
         <p class="text-sm font-semibold">Wi-Fi</p>
         {#if macs.wifi.length}
-          {#each macs.wifi as mac}
+          {#each macs.wifi as mac (mac)}
             <p class="font-mono text-sm text-muted-foreground">{mac}</p>
           {/each}
         {:else}
@@ -165,7 +162,7 @@
       <div>
         <p class="text-sm font-semibold">Ethernet</p>
         {#if macs.ethernet.length}
-          {#each macs.ethernet as mac}
+          {#each macs.ethernet as mac (mac)}
             <p class="font-mono text-sm text-muted-foreground">{mac}</p>
           {/each}
         {:else}

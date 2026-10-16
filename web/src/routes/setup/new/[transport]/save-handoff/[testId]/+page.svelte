@@ -69,7 +69,7 @@
 <div class="space-y-6">
   <header class="space-y-2">
     <p class="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">Final handoff</p>
-    <h1 class="text-3xl font-bold">Applying your saved network</h1>
+    <h1 class="text-3xl font-semibold">Applying your saved network</h1>
   </header>
   <Card className="space-y-4">
     <Alert tone={status === 'error' ? 'error' : 'info'}>{message}</Alert>

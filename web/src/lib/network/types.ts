@@ -56,6 +56,8 @@ export interface AccessPointPreferences {
 }
 
 export interface AccessPointControllerStatus {
+  ssid: string;
+  boot_grace_seconds: number;
   is_enabled: boolean;
   persistent_enabled: boolean;
   automation_paused: boolean;
@@ -68,7 +70,6 @@ export interface NetworkMacAddresses {
 }
 
 export interface BrandingConfig {
-  product_name: string;
   company_name: string;
   headline: string;
   support_text: string;
@@ -90,5 +91,32 @@ export interface ConnectivityReport {
   address: string;
   gateway_reachable: boolean | null;
   internet_verified: boolean;
-  reshape_reachable: boolean;
+  endpoint_groups: EndpointGroupResult[];
 }
+
+export interface CurrentConnectionCheck {
+  name: string;
+  interface: string;
+  report: ConnectivityReport | null;
+  error: string | null;
+}
+
+export interface SavedNetworkDetails {
+  network: SavedNetwork;
+  settings: NetworkSettings;
+  security: 'open' | 'personal' | 'enterprise';
+  edit_unavailable: string | null;
+}
+
+export interface EndpointConfig {
+  name: string;
+  url: string;
+  description: string;
+}
+export interface EndpointGroupConfig {
+  name: string;
+  required: boolean;
+  endpoints: EndpointConfig[];
+}
+export interface EndpointResult extends EndpointConfig { reachable: boolean; }
+export interface EndpointGroupResult extends EndpointGroupConfig { endpoints: EndpointResult[]; }

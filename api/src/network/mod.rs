@@ -1,6 +1,7 @@
 mod ap_supervisor;
 pub mod mock;
 pub mod nmcli;
+mod profiles;
 mod transaction;
 pub mod types;
 
@@ -10,7 +11,8 @@ use uuid::Uuid;
 
 use crate::network::types::{
     AccessPointControllerStatus, AccessPointPreferences, AccessPointStatus, ConnectionState,
-    Connectivity, EthernetNetwork, NetworkMacAddresses, NetworkSettings, SavedNetwork, WifiNetwork,
+    Connectivity, CurrentConnectionCheck, EthernetNetwork, NetworkMacAddresses, NetworkSettings,
+    SavedNetwork, SavedNetworkDetails, WifiNetwork,
 };
 
 #[derive(Error, Debug)]
@@ -43,6 +45,8 @@ pub trait NetworkController: Send + Sync {
     /// Returns up to 2 saved network profiles
     async fn get_saved_networks(&self) -> Result<Vec<SavedNetwork>>;
 
+    async fn get_saved_network(&self, id: &str) -> Result<SavedNetworkDetails>;
+
     /// Starts a Wi-Fi connection test without committing final managed config.
     async fn start_wifi_test(&self, settings: NetworkSettings) -> Result<Uuid>;
 
@@ -66,6 +70,11 @@ pub trait NetworkController: Send + Sync {
 
     /// Gets current internet connectivity status
     async fn get_connectivity(&self) -> Result<Connectivity>;
+
+    fn connectivity_groups(&self) -> Vec<crate::config::EndpointGroup>;
+
+    /// Checks active client connections without modifying network configuration.
+    async fn check_current_connections(&self) -> Result<Vec<CurrentConnectionCheck>>;
 
     /// Get the current status of the setup Hotspot
     async fn get_hotspot_status(&self) -> Result<AccessPointStatus>;

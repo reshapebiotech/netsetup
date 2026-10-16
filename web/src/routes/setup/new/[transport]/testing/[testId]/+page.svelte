@@ -43,14 +43,14 @@
 <div class="space-y-6">
   <header class="space-y-2">
     <p class="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">Testing connection</p>
-    <h1 class="flex items-center gap-2 text-3xl font-bold">
+    <h1 class="flex items-center gap-2 text-3xl font-semibold">
       <Icon name={transport === 'wifi' ? 'wifi' : 'ethernet'} className="h-6 w-6 text-primary" />
       Hold tight while we switch networks
     </h1>
   </header>
   <Card className="space-y-4">
     <p class="text-sm text-muted-foreground">
-      We will check the network, gateway, internet, and Reshape service, then restore your previous connection so you can review the results.
+      We will check the network, gateway, internet, and configured services, then restore your previous connection so you can review the results.
     </p>
     {#if transport === 'wifi'}
       <p class="text-sm text-muted-foreground">

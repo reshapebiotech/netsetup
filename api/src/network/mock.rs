@@ -1,7 +1,7 @@
 use crate::network::types::{
     AccessPointControllerStatus, AccessPointPreferences, AccessPointStatus, ConnectionState,
-    Connectivity, ConnectivityReport, EthernetNetwork, NetworkMacAddresses, NetworkSettings,
-    NetworkTransport, SavedNetwork, WifiNetwork,
+    Connectivity, ConnectivityReport, CurrentConnectionCheck, EthernetNetwork, NetworkMacAddresses,
+    NetworkSettings, NetworkTransport, SavedNetwork, SavedNetworkDetails, WifiNetwork,
 };
 use crate::network::{NetworkController, NetworkError, Result as NetResult};
 use async_trait::async_trait;
@@ -21,12 +21,20 @@ struct MockTestRecord {
 pub struct MockNetworkController {
     tests: Arc<Mutex<HashMap<Uuid, MockTestRecord>>>,
     saved: Arc<Mutex<Option<SavedNetwork>>>,
+    saved_settings: Mutex<NetworkSettings>,
+    endpoint_groups: Arc<Vec<crate::config::EndpointGroup>>,
     ap_prefs: Arc<Mutex<AccessPointPreferences>>,
 }
 
 impl MockNetworkController {
+    #[cfg(test)]
     pub fn new() -> Self {
+        Self::with_groups(vec![])
+    }
+
+    pub fn with_groups(groups: Vec<crate::config::EndpointGroup>) -> Self {
         Self {
+            endpoint_groups: Arc::new(groups),
             tests: Arc::new(Mutex::new(HashMap::new())),
             saved: Arc::new(Mutex::new(Some(SavedNetwork {
                 id: "managed-wifi-1".into(),
@@ -34,6 +42,19 @@ impl MockNetworkController {
                 display_name: "Home_Network".into(),
                 managed: true,
             }))),
+            saved_settings: Mutex::new(NetworkSettings {
+                ssid: Some("Home_Network".into()),
+                password: Some("password".into()),
+                id: None,
+                eap_login: None,
+                eap_password: None,
+                ipv4: Some(super::types::IpConfig {
+                    method: super::types::IpMethod::Auto,
+                    address_data: None,
+                    gateway: None,
+                    dns: None,
+                }),
+            }),
             ap_prefs: Arc::new(Mutex::new(AccessPointPreferences {
                 persistent_enabled: false,
             })),
@@ -42,9 +63,24 @@ impl MockNetworkController {
 
     async fn start_test(
         &self,
-        settings: NetworkSettings,
+        mut settings: NetworkSettings,
         transport: NetworkTransport,
     ) -> NetResult<Uuid> {
+        if let Some(id) = settings.id.clone() {
+            let details = self.get_saved_network(&id).await?;
+            if details.network.transport != transport
+                || settings.ssid != details.settings.ssid
+                || settings.eap_login != details.settings.eap_login
+            {
+                return Err(NetworkError::ConnectionFailed(
+                    "The network or identity changed. Enter its password again.".into(),
+                ));
+            }
+            let saved = self.saved_settings.lock().await;
+            settings.password = saved.password.clone();
+            settings.eap_password = saved.eap_password.clone();
+            settings.id = None;
+        }
         let test_id = Uuid::new_v4();
         {
             let mut tests = self.tests.lock().await;
@@ -59,6 +95,7 @@ impl MockNetworkController {
         }
 
         let tests = self.tests.clone();
+        let groups = self.endpoint_groups.clone();
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_secs(3)).await;
             let mut guard = tests.lock().await;
@@ -88,7 +125,15 @@ impl MockNetworkController {
                     address: "192.168.1.42".into(),
                     gateway_reachable: Some(true),
                     internet_verified: ssid != "CoffeeShop_Guest",
-                    reshape_reachable: ssid != "CoffeeShop_Guest",
+                    endpoint_groups: groups
+                        .iter()
+                        .map(|g| {
+                            super::types::EndpointGroupResult::from_config(
+                                g,
+                                ssid != "CoffeeShop_Guest",
+                            )
+                        })
+                        .collect(),
                 });
             } else {
                 record.state =
@@ -139,6 +184,32 @@ impl NetworkController for MockNetworkController {
         Ok(saved.iter().cloned().collect())
     }
 
+    async fn get_saved_network(&self, id: &str) -> NetResult<SavedNetworkDetails> {
+        let network = self
+            .saved
+            .lock()
+            .await
+            .clone()
+            .filter(|n| n.id == id)
+            .ok_or_else(|| NetworkError::NotFound("Saved network not found".into()))?;
+        let mut settings = self.saved_settings.lock().await.clone();
+        let security = if settings.eap_login.is_some() {
+            "enterprise"
+        } else if settings.password.is_some() {
+            "personal"
+        } else {
+            "open"
+        };
+        settings.password = None;
+        settings.eap_password = None;
+        Ok(SavedNetworkDetails {
+            network,
+            settings,
+            security: security.into(),
+            edit_unavailable: None,
+        })
+    }
+
     async fn start_wifi_test(&self, settings: NetworkSettings) -> NetResult<Uuid> {
         self.start_test(settings, NetworkTransport::Wifi).await
     }
@@ -170,6 +241,7 @@ impl NetworkController for MockNetworkController {
             ));
         };
 
+        *self.saved_settings.lock().await = record.settings.clone();
         let display_name = match record.transport {
             NetworkTransport::Wifi => record.settings.ssid.unwrap_or_else(|| "Wi-Fi".into()),
             NetworkTransport::Ethernet => "Wired connection".into(),
@@ -223,6 +295,29 @@ impl NetworkController for MockNetworkController {
         Ok(())
     }
 
+    fn connectivity_groups(&self) -> Vec<crate::config::EndpointGroup> {
+        self.endpoint_groups.as_ref().clone()
+    }
+
+    async fn check_current_connections(&self) -> NetResult<Vec<CurrentConnectionCheck>> {
+        Ok(vec![CurrentConnectionCheck {
+            name: "Home_Network".into(),
+            interface: "wlan0".into(),
+            report: Some(ConnectivityReport {
+                interface: "wlan0".into(),
+                address: "192.168.1.42".into(),
+                gateway_reachable: Some(true),
+                internet_verified: true,
+                endpoint_groups: self
+                    .endpoint_groups
+                    .iter()
+                    .map(|g| super::types::EndpointGroupResult::from_config(g, true))
+                    .collect(),
+            }),
+            error: None,
+        }])
+    }
+
     async fn get_connectivity(&self) -> NetResult<Connectivity> {
         Ok(Connectivity {
             is_connected: true,
@@ -233,6 +328,8 @@ impl NetworkController for MockNetworkController {
     async fn get_ap_controller_status(&self) -> NetResult<AccessPointControllerStatus> {
         let prefs = self.ap_prefs.lock().await.clone();
         Ok(AccessPointControllerStatus {
+            ssid: "reshape-demo".into(),
+            boot_grace_seconds: super::ap_supervisor::DEFAULT_BOOT_GRACE.as_secs(),
             automation_paused: false,
             is_enabled: prefs.persistent_enabled,
             persistent_enabled: prefs.persistent_enabled,

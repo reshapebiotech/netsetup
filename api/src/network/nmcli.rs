@@ -3,8 +3,8 @@ use crate::network::ap_supervisor::{
 };
 use crate::network::types::{
     AccessPointControllerStatus, AccessPointPreferences, AccessPointStatus, ConnectionState,
-    Connectivity, EthernetNetwork, IpMethod, NetworkMacAddresses, NetworkSettings,
-    NetworkTransport, SavedNetwork, WifiNetwork,
+    Connectivity, CurrentConnectionCheck, EthernetNetwork, IpMethod, NetworkMacAddresses,
+    NetworkSettings, NetworkTransport, SavedNetwork, SavedNetworkDetails, WifiNetwork,
 };
 use crate::network::{NetworkController, NetworkError, Result as NetResult};
 use async_trait::async_trait;
@@ -56,18 +56,29 @@ pub struct NmcliNetworkController {
     probe_host: String,
     mutation: Arc<Mutex<()>>,
     boot_grace: Duration,
+    endpoint_groups: Arc<Vec<crate::config::EndpointGroup>>,
 }
 
 impl NmcliNetworkController {
     async fn start_test(
         &self,
-        settings: NetworkSettings,
+        mut settings: NetworkSettings,
         transport: NetworkTransport,
     ) -> NetResult<Uuid> {
         self.ensure_supervisor_started().await;
         let guard = self.mutation.clone().try_lock_owned().map_err(|_| {
             NetworkError::ConnectionFailed("Another network operation is in progress".into())
         })?;
+        if let Some(id) = settings.id.clone() {
+            let details = self.get_saved_network(&id).await?;
+            super::profiles::retain_credentials(
+                &super::transaction::SystemCommands,
+                &details,
+                &transport,
+                &mut settings,
+            )
+            .await?;
+        }
         if transport == NetworkTransport::Wifi && settings.ssid.as_deref().is_none_or(str::is_empty)
         {
             return Err(NetworkError::ConnectionFailed(
@@ -87,6 +98,7 @@ impl NmcliNetworkController {
             },
         );
         let tests = self.active_tests.clone();
+        let groups = self.endpoint_groups.clone();
         tokio::spawn(async move {
             let _guard = guard;
             // Let the browser receive the test ID before its AP connection disappears.
@@ -98,6 +110,7 @@ impl NmcliNetworkController {
                 &interface,
                 None,
                 None,
+                &groups,
             )
             .await;
             if let Some(record) = tests.lock().await.get_mut(&test_id) {
@@ -110,8 +123,13 @@ impl NmcliNetworkController {
         Ok(test_id)
     }
 
-    pub fn new(hostname: Option<String>, password: String) -> Self {
+    pub fn new(
+        hostname: Option<String>,
+        password: String,
+        endpoint_groups: Vec<crate::config::EndpointGroup>,
+    ) -> Self {
         Self {
+            endpoint_groups: Arc::new(endpoint_groups),
             active_tests: Arc::new(Mutex::new(HashMap::new())),
             ap_state: Arc::new(Mutex::new(ApSupervisorState {
                 save_in_progress: false,
@@ -338,6 +356,7 @@ impl NmcliNetworkController {
             probe_host: self.probe_host.clone(),
             mutation: self.mutation.clone(),
             boot_grace: self.boot_grace,
+            endpoint_groups: self.endpoint_groups.clone(),
         };
 
         tokio::spawn(async move {
@@ -779,6 +798,16 @@ impl NetworkController for NmcliNetworkController {
         Ok(saved)
     }
 
+    async fn get_saved_network(&self, id: &str) -> NetResult<SavedNetworkDetails> {
+        let network = self
+            .get_saved_networks()
+            .await?
+            .into_iter()
+            .find(|network| network.id == id)
+            .ok_or_else(|| NetworkError::NotFound("Saved network not found".into()))?;
+        super::profiles::inspect(&super::transaction::SystemCommands, network).await
+    }
+
     async fn start_wifi_test(&self, settings: NetworkSettings) -> NetResult<Uuid> {
         self.start_test(settings, NetworkTransport::Wifi).await
     }
@@ -825,6 +854,7 @@ impl NetworkController for NmcliNetworkController {
         self.ap_state.lock().await.save_in_progress = true;
         let tests = self.active_tests.clone();
         let ap_state = self.ap_state.clone();
+        let groups = self.endpoint_groups.clone();
         tokio::spawn(async move {
             let _guard = guard;
             // Let the accepted response reach the browser before switching its network.
@@ -836,6 +866,7 @@ impl NetworkController for NmcliNetworkController {
                 &report.interface,
                 Some(&report),
                 old_profile.as_deref(),
+                &groups,
             )
             .await;
             if let Some(record) = tests.lock().await.get_mut(&test_id) {
@@ -933,6 +964,24 @@ impl NetworkController for NmcliNetworkController {
         reset_result
     }
 
+    fn connectivity_groups(&self) -> Vec<crate::config::EndpointGroup> {
+        self.endpoint_groups.as_ref().clone()
+    }
+
+    async fn check_current_connections(&self) -> NetResult<Vec<CurrentConnectionCheck>> {
+        tokio::time::timeout(
+            Duration::from_secs(60),
+            super::transaction::check_current_connections(
+                &super::transaction::SystemCommands,
+                &self.endpoint_groups,
+            ),
+        )
+        .await
+        .map_err(|_| {
+            NetworkError::ConnectionFailed("Connectivity check timed out. Try again.".into())
+        })?
+    }
+
     async fn get_connectivity(&self) -> NetResult<Connectivity> {
         self.ensure_supervisor_started().await;
         self.current_connectivity().await
@@ -1024,6 +1073,8 @@ impl NetworkController for NmcliNetworkController {
             state.machine.last_reason().to_string()
         };
         Ok(AccessPointControllerStatus {
+            ssid: self.hotspot_name.clone(),
+            boot_grace_seconds: self.boot_grace.as_secs(),
             is_enabled,
             persistent_enabled: state.machine.persistent_enabled(),
             automation_paused,

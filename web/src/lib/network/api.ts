@@ -1,4 +1,6 @@
 import type {
+  CurrentConnectionCheck,
+  EndpointGroupConfig,
   AccessPointControllerStatus,
   AccessPointPreferences,
   NetworkMacAddresses,
@@ -7,6 +9,7 @@ import type {
   EthernetNetwork,
   NetworkSettings,
   SavedNetwork,
+  SavedNetworkDetails,
   Transport,
   WifiNetwork
 } from '#lib/network/types.js';
@@ -57,8 +60,19 @@ function api(path: string) {
 }
 
 export const networkApi = {
+  async getDeviceInfo(): Promise<{ hostname: string }> {
+    const res = await withTimeout('/api/device');
+    await parseOrThrow(res);
+    return res.json();
+  },
   async listSaved(): Promise<SavedNetwork[]> {
     const res = await withTimeout(api('/saved'));
+    await parseOrThrow(res);
+    return res.json();
+  },
+
+  async getSaved(id: string): Promise<SavedNetworkDetails> {
+    const res = await withTimeout(api(`/saved/${encodeURIComponent(id)}`));
     await parseOrThrow(res);
     return res.json();
   },
@@ -71,6 +85,18 @@ export const networkApi = {
 
   async scanEthernet(): Promise<EthernetNetwork[]> {
     const res = await withTimeout(api('/ethernet/scan'));
+    await parseOrThrow(res);
+    return res.json();
+  },
+
+  async getConnectivityGroups(): Promise<EndpointGroupConfig[]> {
+    const res = await withTimeout(api('/connectivity/groups'));
+    await parseOrThrow(res);
+    return res.json();
+  },
+
+  async checkCurrentConnections(): Promise<CurrentConnectionCheck[]> {
+    const res = await withTimeout(api('/connectivity/check'), { cache: 'no-store' }, 90_000);
     await parseOrThrow(res);
     return res.json();
   },

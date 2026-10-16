@@ -15,7 +15,7 @@
   bind:value
   {type}
   class={cn(
-    'w-full rounded-md border border-input bg-white px-3 py-2 text-base text-foreground outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm',
+    'w-full min-h-11 rounded-lg border border-input bg-background/60 px-3 py-2.5 text-base text-foreground outline-none transition-colors focus:border-primary focus:ring-1 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm',
     className
   )}
 />
