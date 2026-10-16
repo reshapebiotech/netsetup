@@ -57,23 +57,6 @@ For an upgrade, extract the new bundle and run `sudo ./install.sh`. Existing
 configuration is preserved. Pass `--config` only when deliberately replacing it.
 An unchanged installation does not restart the service.
 
-### Migrate an existing Docker installation
-
-Run the new bundle's installer with the old checkout path:
-
-```fish
-sudo ./install.sh --legacy-dir /home/pi/machine-setup
-```
-
-When no installed configuration exists, the installer imports `DEVICE_NAME` and
-`HOTSPOT_PASSWORD` from the old `.env`. It disables restart and stops the known
-`setup-api` and `setup-ui` containers, then removes them after the native service
-starts and responds over HTTP. It also removes the legacy self-update cron
-entry and disables autoconnect on the matching legacy AP profile, so
-NetworkManager cannot bypass the boot-only AP policy. The active connection is
-preserved. The old checkout remains available as a configuration backup; Docker
-and unrelated containers are left in place.
-
 ### Building releases
 
 CI tests the API and frontend, then builds an ARM64 bundle as a downloadable

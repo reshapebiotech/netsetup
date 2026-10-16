@@ -3,7 +3,7 @@ set -euo pipefail
 
 fail() { echo "$*" >&2; exit 1; }
 usage() {
-  echo 'Usage: install.sh [BINARY] [--config CONFIG.toml] [--legacy-dir DIRECTORY]'
+  echo 'Usage: install.sh [BINARY] [--config CONFIG.toml]'
   echo 'Existing configuration is preserved unless --config is supplied.'
 }
 
@@ -12,12 +12,10 @@ if [[ "$EUID" != 0 ]]; then exec sudo -- "$0" "$@"; fi
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_SOURCE=''
-LEGACY_DIR=''
 BIN_SOURCE=''
 while (( $# )); do
   case "$1" in
     --config) (( $# >= 2 )) || fail 'Missing --config path'; CONFIG_SOURCE="$2"; shift 2 ;;
-    --legacy-dir) (( $# >= 2 )) || fail 'Missing --legacy-dir path'; LEGACY_DIR="$2"; shift 2 ;;
     --*) fail "Unknown option: $1" ;;
     *) [[ -z "$BIN_SOURCE" ]] || fail 'Only one binary may be supplied'; BIN_SOURCE="$1"; shift ;;
   esac
@@ -54,16 +52,10 @@ if [[ -n "$CONFIG_SOURCE" ]]; then
   cp -- "$CONFIG_SOURCE" "$WORK/config.toml"
 elif [[ -f "$CONFIG_DEST" ]]; then
   cp -- "$CONFIG_DEST" "$WORK/config.toml"
-elif [[ -n "$LEGACY_DIR" && -f "$LEGACY_DIR/.env" ]]; then
-  "$BIN_SOURCE" --import-legacy-config "$LEGACY_DIR/.env" > "$WORK/config.toml"
 else
   fail 'First installation requires --config CONFIG.toml with an AP password.'
 fi
 "$BIN_SOURCE" --check-config "$WORK/config.toml"
-legacy_ap_name=''
-if [[ -n "$LEGACY_DIR" && -f "$LEGACY_DIR/.env" ]]; then
-  legacy_ap_name="$("$BIN_SOURCE" --legacy-ap-name "$LEGACY_DIR/.env")"
-fi
 if [[ -f "$SCRIPT_DIR/VERSION" ]]; then
   cp "$SCRIPT_DIR/VERSION" "$WORK/VERSION"
 else
@@ -81,56 +73,6 @@ if [[ "$missing" == 1 || ! -s /etc/ssl/certs/ca-certificates.crt ]]; then
 fi
 
 changed=0
-legacy_containers=()
-if [[ -n "$LEGACY_DIR" && -d "$LEGACY_DIR" ]]; then
-  if command -v docker >/dev/null; then
-    docker info >/dev/null 2>&1 || fail 'Start Docker so the legacy containers can be retired.'
-    for container in setup-api setup-ui; do
-      if metadata="$(docker inspect --format '{{.Config.Image}}|{{.HostConfig.RestartPolicy.Name}}|{{.State.Running}}' "$container" 2>/dev/null)"; then
-        case "$container" in
-          setup-api) expected_image=ghcr.io/reshapebiotech/machine-setup-api ;;
-          setup-ui) expected_image=ghcr.io/reshapebiotech/machine-setup-ui ;;
-        esac
-        image="${metadata%%|*}"
-        [[ "$image" == "$expected_image":* || "$image" == "$expected_image"@sha256:* ]] || fail "Refusing to stop an unrelated container named $container"
-        legacy_containers+=("$container")
-      fi
-    done
-    # Validate both identities before stopping either container.
-    for container in "${legacy_containers[@]}"; do
-      docker update --restart=no "$container" >/dev/null
-      docker stop "$container" >/dev/null
-      changed=1
-    done
-  fi
-  if command -v crontab >/dev/null; then
-    for owner in root "$(stat -c '%U' "$LEGACY_DIR")"; do
-      if crontab -u "$owner" -l > "$WORK/cron" 2>/dev/null; then
-        awk '/^#Ansible: machine-setup-self-update$/ { getline; next } { print }' "$WORK/cron" > "$WORK/cron.cleaned"
-        if ! cmp -s "$WORK/cron" "$WORK/cron.cleaned"; then
-          crontab -u "$owner" "$WORK/cron.cleaned"
-          changed=1
-        fi
-      fi
-    done
-  fi
-fi
-
-if [[ -n "$legacy_ap_name" ]]; then
-  LC_ALL=C nmcli -t -f UUID,TYPE connection show > "$WORK/connections"
-  while IFS=: read -r uuid type; do
-    [[ "$type" == 802-11-wireless ]] || continue
-    name="$(LC_ALL=C nmcli --escape no -g connection.id connection show uuid "$uuid")"
-    [[ "$name" == "$legacy_ap_name" ]] || continue
-    mode="$(LC_ALL=C nmcli -g 802-11-wireless.mode connection show uuid "$uuid")"
-    [[ "$mode" == ap ]] || continue
-    autoconnect="$(LC_ALL=C nmcli -g connection.autoconnect connection show uuid "$uuid")"
-    if [[ "$autoconnect" == yes ]]; then
-      nmcli connection modify uuid "$uuid" connection.autoconnect no
-      changed=1
-    fi
-  done < "$WORK/connections"
-fi
 
 install_atomic() {
   local source="$1" destination="$2" mode="$3" staged
@@ -162,11 +104,4 @@ systemctl daemon-reload
 systemctl enable reshape-netsetup.service
 systemctl restart reshape-netsetup.service
 systemctl is-active --quiet reshape-netsetup.service
-if (( ${#legacy_containers[@]} )); then
-  curl --fail --silent --output /dev/null --connect-timeout 2 --max-time 5 \
-    --retry 10 --retry-connrefused --retry-delay 1 http://127.0.0.1:3000/
-  for container in "${legacy_containers[@]}"; do
-    docker rm -- "$container" >/dev/null
-  done
-fi
 printf 'Installed reshape-netsetup %s\n' "$(cat /opt/reshape-netsetup/VERSION)"
