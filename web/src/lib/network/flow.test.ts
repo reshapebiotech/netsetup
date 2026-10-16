@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canTransition } from '$lib/network/flow';
+import { canTransition } from '#lib/network/flow.js';
 
 describe('flow transitions', () => {
   it('allows editing -> test_submitting', () => {

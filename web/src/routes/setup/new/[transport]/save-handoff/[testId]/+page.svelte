@@ -2,12 +2,12 @@
   import { onMount } from 'svelte';
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
-  import Card from '$lib/components/ui/card.svelte';
-  import Button from '$lib/components/ui/button.svelte';
-  import Alert from '$lib/components/ui/alert.svelte';
-  import Loading from '$lib/components/ui/loading.svelte';
-  import { networkApi } from '$lib/network/api';
-  import { resultSummary } from '$lib/network/results';
+  import Card from '#lib/components/ui/card.svelte';
+  import Button from '#lib/components/ui/button.svelte';
+  import Alert from '#lib/components/ui/alert.svelte';
+  import Loading from '#lib/components/ui/loading.svelte';
+  import { networkApi } from '#lib/network/api.js';
+  import { resultSummary } from '#lib/network/results.js';
 
   const testId = $derived(page.params.testId ?? '');
   let status = $state<'saving' | 'saved' | 'unconfirmed' | 'error'>('saving');

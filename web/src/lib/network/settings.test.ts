@@ -1,7 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { buildSettingsFromForm, parseDnsInput } from '$lib/network/settings';
+import { buildSettingsFromForm, parseDnsInput } from '#lib/network/settings.js';
+import { validateSettings } from '#lib/network/validators.js';
 
 describe('network settings payload', () => {
+  it.each(['0', '24', '32', 0, 24, 32])('preserves a valid /%s prefix', (prefix) => {
+    const settings = manualSettings(prefix);
+    expect(settings.ipv4?.address_data?.[0].prefix).toBe(Number(prefix));
+    expect(validateSettings('ethernet', settings, false)).toEqual([]);
+  });
+
+  it.each(['', ' ', 'abc', '24junk', '24.5', '-1', '33', 'Infinity'])('rejects invalid prefix %j instead of substituting /24', (prefix) => {
+    expect(validateSettings('ethernet', manualSettings(prefix), false))
+      .toContain('IPv4 prefix must be an integer between 0 and 32');
+  });
+
   it('submits DNS in auto mode', () => {
     const settings = buildSettingsFromForm({
       transport: 'ethernet',
@@ -89,3 +101,11 @@ describe('network settings payload', () => {
     expect(parseDnsInput('1.1.1.1, , 8.8.8.8,')).toEqual(['1.1.1.1', '8.8.8.8']);
   });
 });
+
+function manualSettings(ipv4Prefix: string | number) {
+  return buildSettingsFromForm({
+    transport: 'ethernet', ssid: '', password: '', enterprise: false,
+    eapLogin: '', eapPassword: '', ipMethod: 'manual',
+    ipv4Address: '192.168.1.20', ipv4Gateway: '192.168.1.1', ipv4Prefix, dnsRaw: ''
+  });
+}

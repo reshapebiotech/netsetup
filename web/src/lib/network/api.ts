@@ -9,7 +9,7 @@ import type {
   SavedNetwork,
   Transport,
   WifiNetwork
-} from '$lib/network/types';
+} from '#lib/network/types.js';
 
 interface ConnectResponse {
   test_id: string;

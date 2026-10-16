@@ -1,17 +1,17 @@
 <script lang="ts">
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
-  import Card from '$lib/components/ui/card.svelte';
-  import Button from '$lib/components/ui/button.svelte';
-  import Input from '$lib/components/ui/input.svelte';
-  import Select from '$lib/components/ui/select.svelte';
-  import Alert from '$lib/components/ui/alert.svelte';
-  import Loading from '$lib/components/ui/loading.svelte';
-  import Icon from '$lib/components/ui/icon.svelte';
-  import { networkApi } from '$lib/network/api';
-  import type { NetworkSettings, Transport, WifiNetwork } from '$lib/network/types';
-  import { buildSettingsFromForm } from '$lib/network/settings';
-  import { validateSettings } from '$lib/network/validators';
+  import Card from '#lib/components/ui/card.svelte';
+  import Button from '#lib/components/ui/button.svelte';
+  import Input from '#lib/components/ui/input.svelte';
+  import Select from '#lib/components/ui/select.svelte';
+  import Alert from '#lib/components/ui/alert.svelte';
+  import Loading from '#lib/components/ui/loading.svelte';
+  import Icon from '#lib/components/ui/icon.svelte';
+  import { networkApi } from '#lib/network/api.js';
+  import type { NetworkSettings, Transport, WifiNetwork } from '#lib/network/types.js';
+  import { buildSettingsFromForm } from '#lib/network/settings.js';
+  import { validateSettings } from '#lib/network/validators.js';
   import { onMount } from 'svelte';
 
   const transport = $derived<Transport>(page.params.transport === 'ethernet' ? 'ethernet' : 'wifi');

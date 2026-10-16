@@ -1,9 +1,9 @@
 <script lang="ts">
   import { onMount, type Snippet } from 'svelte';
   import '../app.css';
-  import { branding } from '$lib/branding';
-  import { networkApi } from '$lib/network/api';
-  import Icon from '$lib/components/ui/icon.svelte';
+  import { branding } from '#lib/branding.js';
+  import { networkApi } from '#lib/network/api.js';
+  import Icon from '#lib/components/ui/icon.svelte';
 
   type DeviceStatus = 'checking' | 'online' | 'no_internet' | 'disconnected';
 
@@ -68,7 +68,7 @@
 <div
   class="mx-auto min-h-screen w-full max-w-4xl px-4 py-8 sm:px-6 lg:px-10"
 >
-  <div class="mb-8 flex flex-col gap-3 rounded-xl border border-border/80 bg-white/80 p-4 shadow-sm backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+  <div class="mb-8 flex flex-col gap-3 rounded-xl border border-border/80 bg-white/80 p-4 shadow-xs backdrop-blur-sm sm:flex-row sm:items-center sm:justify-between">
     {#if $branding.logo_path}
       <a href="/" aria-label="Back to home" class="shrink-0">
         <img src={$branding.logo_path} alt="{$branding.product_name} logo" class="h-auto max-h-14 w-auto object-contain" />

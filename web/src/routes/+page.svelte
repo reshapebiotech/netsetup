@@ -1,14 +1,14 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
-  import Card from '$lib/components/ui/card.svelte';
-  import Button from '$lib/components/ui/button.svelte';
-  import Alert from '$lib/components/ui/alert.svelte';
-  import Loading from '$lib/components/ui/loading.svelte';
-  import Icon from '$lib/components/ui/icon.svelte';
-  import { networkApi } from '$lib/network/api';
-  import { branding } from '$lib/branding';
-  import type { SavedNetwork } from '$lib/network/types';
+  import Card from '#lib/components/ui/card.svelte';
+  import Button from '#lib/components/ui/button.svelte';
+  import Alert from '#lib/components/ui/alert.svelte';
+  import Loading from '#lib/components/ui/loading.svelte';
+  import Icon from '#lib/components/ui/icon.svelte';
+  import { networkApi } from '#lib/network/api.js';
+  import { branding } from '#lib/branding.js';
+  import type { SavedNetwork } from '#lib/network/types.js';
 
   let saved = $state<SavedNetwork[]>([]);
   let loading = $state(true);

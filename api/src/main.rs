@@ -118,7 +118,7 @@ async fn main() {
             .unwrap_or(10053);
         let addr = SocketAddr::from(([0, 0, 0, 0], port));
         let handler = CaptivePortalDns::new(Ipv4Addr::new(10, 42, 0, 1));
-        let mut server = hickory_server::ServerFuture::new(handler);
+        let mut server = hickory_server::Server::new(handler);
 
         match UdpSocket::bind(addr).await {
             Ok(udp_socket) => {

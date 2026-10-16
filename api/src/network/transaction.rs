@@ -3,7 +3,7 @@ use super::types::{ConnectivityReport, NetworkSettings, NetworkTransport};
 use super::{NetworkError, Result};
 use async_trait::async_trait;
 use hickory_server::proto::{
-    op::{Message, MessageType, Query, ResponseCode},
+    op::{Message, MessageType, OpCode, Query, ResponseCode},
     rr::{Name, RData, RecordType},
 };
 use serde_json::Value;
@@ -16,6 +16,36 @@ use uuid::Uuid;
 const NM: &str = "org.freedesktop.NetworkManager";
 const NM_PATH: &str = "/org/freedesktop/NetworkManager";
 const CHECKPOINT_SECONDS: &str = "120";
+const RESTORE_FAILURE: &str = "Could not restore the previous connection. Reconnect to setup Wi-Fi when it becomes available, or reboot the device.";
+
+fn failure(message: &str) -> NetworkError {
+    NetworkError::ConnectionFailed(message.into())
+}
+
+fn activation_error(reason: &str, transport: &NetworkTransport) -> NetworkError {
+    // NMDeviceStateReason values are stable across NetworkManager versions.
+    match reason
+        .split_whitespace()
+        .next()
+        .and_then(|code| code.parse::<u32>().ok())
+    {
+        Some(5 | 6 | 15..=17) => failure(
+            "The network could not obtain an IP configuration. Check DHCP or the manual IP address, prefix, and gateway.",
+        ),
+        Some(7..=11) => failure(
+            "Network authentication did not complete. Check the Wi-Fi password or enterprise credentials.",
+        ),
+        Some(53) => failure("The Wi-Fi network could not be found. Check the SSID and signal."),
+        _ => failure(match transport {
+            NetworkTransport::Wifi => {
+                "Could not activate the Wi-Fi connection. Check the SSID, password, and signal."
+            }
+            NetworkTransport::Ethernet => {
+                "Could not activate the Ethernet connection. Check the cable and authentication settings."
+            }
+        }),
+    }
+}
 
 #[async_trait]
 #[allow(
@@ -89,14 +119,14 @@ fn object_path(value: &Value) -> Result<String> {
 }
 
 async fn rollback(commands: &impl Commands, checkpoint: &str) -> Result<()> {
-    let response = bus(commands, "CheckpointRollback", &["o", checkpoint]).await?;
+    let response = bus(commands, "CheckpointRollback", &["o", checkpoint])
+        .await
+        .map_err(|_| failure(RESTORE_FAILURE))?;
     let results = response["data"][0]
         .as_object()
-        .ok_or_else(|| NetworkError::Internal("Missing checkpoint rollback results".into()))?;
+        .ok_or_else(|| failure(RESTORE_FAILURE))?;
     if results.is_empty() || results.values().any(|v| v.as_u64() != Some(0)) {
-        return Err(NetworkError::Internal(
-            "Could not restore the previous connection. Reconnect to setup Wi-Fi when it becomes available, or reboot the device.".into(),
-        ));
+        return Err(failure(RESTORE_FAILURE));
     }
     Ok(())
 }
@@ -147,20 +177,22 @@ pub(super) async fn run(
     .await?;
     let device = object_path(&bus(commands, "GetDeviceByIpIface", &["s", interface]).await?)?;
     // DELETE_NEW_CONNECTIONS ensures temporary profiles disappear on automatic rollback too.
-    let checkpoint = object_path(
-        &bus(
+    let checkpoint = bus(
             commands,
             "CheckpointCreate",
             &["aouu", "1", &device, CHECKPOINT_SECONDS, "2"],
-        )
-        .await?,
-    )?;
+        ).await.and_then(|response| object_path(&response))
+        .map_err(|_| failure("Could not create a NetworkManager recovery checkpoint. No network changes were applied."))?;
     let profile = format!("reshape-pending-{}", Uuid::new_v4());
     let operation = timeout(Duration::from_secs(90), async {
         let mut args = build_nmcli_connection_args(settings, *transport == NetworkTransport::Wifi, &profile);
         args.extend(strings(&["ifname", interface, "connection.autoconnect", "no"]));
-        commands.run("nmcli", &args).await?;
-        nmcli(commands, &["--wait", "40", "connection", "up", "id", &profile, "ifname", interface]).await?;
+        commands.run("nmcli", &args).await
+            .map_err(|_| failure("Could not prepare the network profile. Check the network and IP settings."))?;
+        if nmcli(commands, &["--wait", "40", "connection", "up", "id", &profile, "ifname", interface]).await.is_err() {
+            let reason = nmcli(commands, &["-g", "GENERAL.REASON", "device", "show", interface]).await.unwrap_or_default();
+            return Err(activation_error(&reason, transport));
+        }
         let report = probe(commands, interface).await?;
         if let Some(previous) = previous {
             if !report.preserves(previous) {
@@ -172,8 +204,10 @@ pub(super) async fn run(
                 NetworkTransport::Wifi => "reshape-managed-wifi",
                 NetworkTransport::Ethernet => "reshape-managed-ethernet",
             };
-            nmcli(commands, &["connection", "modify", "id", &profile, "connection.id", managed, "connection.autoconnect", "yes", "connection.autoconnect-priority", "100"]).await?;
-            bus(commands, "CheckpointDestroy", &["o", &checkpoint]).await?;
+            nmcli(commands, &["connection", "modify", "id", &profile, "connection.id", managed, "connection.autoconnect", "yes", "connection.autoconnect-priority", "100"]).await
+                .map_err(|_| failure("Could not save the verified network profile."))?;
+            bus(commands, "CheckpointDestroy", &["o", &checkpoint]).await
+                .map_err(|_| failure("Could not commit the verified network configuration."))?;
         }
         Ok(report)
     }).await.unwrap_or_else(|_| Err(NetworkError::ConnectionFailed("Network operation timed out; restoring the previous connection.".into())));
@@ -189,9 +223,15 @@ pub(super) async fn run(
                 }
                 tokio::time::sleep(Duration::from_millis(500)).await;
             }
-        }).await.map_err(|_| NetworkError::ConnectionFailed("The previous connection is taking too long to return. Reconnect to setup Wi-Fi or reboot the device.".into()))??;
+        }).await.map_err(|_| failure("The previous connection is taking too long to return. Reconnect to setup Wi-Fi or reboot the device."))?
+            .map_err(|_| failure(RESTORE_FAILURE))?;
     }
-    let report = operation?;
+    let report = operation.map_err(|error| match error {
+        NetworkError::ConnectionFailed(message) => failure(&format!(
+            "{message} The previous connection has been restored."
+        )),
+        other => other,
+    })?;
     if previous.is_some() {
         // Remove the superseded profile only after the replacement has been verified and committed.
         if let Some(uuid) = old_profile
@@ -208,14 +248,15 @@ async fn probe(commands: &impl Commands, interface: &str) -> Result<Connectivity
         commands,
         &["-g", "IP4.ADDRESS", "device", "show", interface],
     )
-    .await?;
+    .await
+    .map_err(|_| failure("Could not read the connection's IP address from NetworkManager."))?;
     let address = addresses
         .lines()
         .filter_map(|s| s.split('/').next()?.parse::<Ipv4Addr>().ok())
         .find(|ip| !ip.is_unspecified() && !ip.is_link_local() && !ip.is_loopback())
         .ok_or_else(|| {
             NetworkError::ConnectionFailed(
-                "The network did not provide a usable IPv4 address".into(),
+                "The network connected but did not provide a usable IPv4 address. Check DHCP or the manual IP settings.".into(),
             )
         })?;
     let gateway = nmcli(
@@ -376,11 +417,9 @@ async fn dns_query(
     socket.connect(SocketAddr::from((server, 53))).await?;
     let id = Uuid::new_v4().as_u128() as u16;
     let name = Name::from_ascii(format!("{host}.")).map_err(std::io::Error::other)?;
-    let mut message = Message::new();
-    message
-        .set_id(id)
-        .set_recursion_desired(true)
-        .add_query(Query::query(name, RecordType::A));
+    let mut message = Message::new(id, MessageType::Query, OpCode::Query);
+    message.metadata.recursion_desired = true;
+    message.add_query(Query::query(name, RecordType::A));
     let bytes = message.to_vec().map_err(std::io::Error::other)?;
     socket.send(&bytes).await?;
     let mut buffer = [0; 4096];
@@ -390,18 +429,18 @@ async fn dns_query(
 
 fn dns_answers(bytes: &[u8], query: &Message) -> std::io::Result<Vec<Ipv4Addr>> {
     let response = Message::from_vec(bytes).map_err(std::io::Error::other)?;
-    if response.id() != query.id()
-        || response.message_type() != MessageType::Response
-        || response.response_code() != ResponseCode::NoError
-        || response.truncated()
-        || response.queries() != query.queries()
+    if response.id != query.id
+        || response.message_type != MessageType::Response
+        || response.response_code != ResponseCode::NoError
+        || response.truncation
+        || response.queries != query.queries
     {
         return Err(std::io::Error::other("Invalid DNS response"));
     }
     Ok(response
-        .answers()
+        .answers
         .iter()
-        .filter_map(|record| match record.data() {
+        .filter_map(|record| match &record.data {
             RData::A(address) => Some(address.0),
             _ => None,
         })
@@ -423,6 +462,8 @@ mod tests {
         fail_restore: bool,
         disconnected: bool,
         devices: &'static str,
+        activation_reason: &'static str,
+        missing_address: bool,
     }
 
     #[async_trait]
@@ -473,8 +514,16 @@ mod tests {
                 }
                 .into());
             }
+            if call.contains("GENERAL.REASON") {
+                return Ok(self.activation_reason.into());
+            }
             if call.contains("IP4.ADDRESS") {
-                return Ok("192.168.1.42/24".into());
+                return Ok(if self.missing_address {
+                    ""
+                } else {
+                    "192.168.1.42/24"
+                }
+                .into());
             }
             if call.contains("IP4.GATEWAY") {
                 return Ok("192.168.1.1".into());
@@ -505,6 +554,85 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn activation_failures_explain_the_phase_and_confirm_restore() {
+        for (reason, expected) in [
+            (
+                "7 (Secrets were required)",
+                "authentication did not complete",
+            ),
+            (
+                "15 (DHCP client failed to start)",
+                "could not obtain an IP configuration",
+            ),
+            ("53 (SSID not found)", "Wi-Fi network could not be found"),
+            ("0 (No reason)", "Could not activate the Wi-Fi connection"),
+        ] {
+            let commands = FakeCommands {
+                fail_activation: true,
+                activation_reason: reason,
+                ..Default::default()
+            };
+            let error = run(
+                &commands,
+                &settings(),
+                &NetworkTransport::Wifi,
+                "wlan0",
+                None,
+                None,
+            )
+            .await
+            .unwrap_err()
+            .to_string();
+            assert!(error.contains(expected), "{error}");
+            assert!(error.contains("previous connection has been restored"));
+            assert!(!error.contains("secret"));
+        }
+    }
+
+    #[tokio::test]
+    async fn missing_address_is_distinct_from_activation_failure() {
+        let commands = FakeCommands {
+            missing_address: true,
+            ..Default::default()
+        };
+        let error = run(
+            &commands,
+            &settings(),
+            &NetworkTransport::Wifi,
+            "wlan0",
+            None,
+            None,
+        )
+        .await
+        .unwrap_err()
+        .to_string();
+        assert!(error.contains("did not provide a usable IPv4 address"));
+        assert!(error.contains("previous connection has been restored"));
+    }
+
+    #[tokio::test]
+    async fn failed_restore_does_not_claim_recovery_succeeded() {
+        let commands = FakeCommands {
+            fail_activation: true,
+            fail_restore: true,
+            ..Default::default()
+        };
+        let error = run(
+            &commands,
+            &settings(),
+            &NetworkTransport::Wifi,
+            "wlan0",
+            None,
+            None,
+        )
+        .await
+        .unwrap_err()
+        .to_string();
+        assert!(error.contains("Could not restore the previous connection"));
+        assert!(!error.contains("has been restored"));
+    }
+
     #[test]
     fn dns_servers_accept_networkmanager_list_output() {
         let expected = vec![Ipv4Addr::new(9, 9, 9, 9), Ipv4Addr::new(149, 112, 112, 112)];
@@ -529,32 +657,29 @@ mod tests {
     fn dns_checks_reject_mismatched_or_incomplete_answers() {
         use hickory_server::proto::rr::{Record, rdata::A};
         let name = Name::from_ascii("ris-api.reshapebiotech.com.").unwrap();
-        let mut query = Message::new();
-        query
-            .set_id(42)
-            .add_query(Query::query(name.clone(), RecordType::A));
+        let mut query = Message::new(42, MessageType::Query, OpCode::Query);
+        query.add_query(Query::query(name.clone(), RecordType::A));
         let mut response = query.clone();
-        response
-            .set_message_type(MessageType::Response)
-            .add_answer(Record::from_rdata(
-                name.clone(),
-                60,
-                RData::A(A(Ipv4Addr::new(192, 0, 2, 1))),
-            ));
+        response.metadata.message_type = MessageType::Response;
+        response.add_answer(Record::from_rdata(
+            name.clone(),
+            60,
+            RData::A(A(Ipv4Addr::new(192, 0, 2, 1))),
+        ));
         assert_eq!(
             dns_answers(&response.to_vec().unwrap(), &query).unwrap(),
             vec![Ipv4Addr::new(192, 0, 2, 1)]
         );
-        response.set_id(43);
+        response.metadata.id = 43;
         assert!(dns_answers(&response.to_vec().unwrap(), &query).is_err());
-        response.set_id(42).set_truncated(true);
+        response.metadata.id = 42;
+        response.metadata.truncation = true;
         assert!(dns_answers(&response.to_vec().unwrap(), &query).is_err());
-        response
-            .set_truncated(false)
-            .set_response_code(ResponseCode::NXDomain);
+        response.metadata.truncation = false;
+        response.metadata.response_code = ResponseCode::NXDomain;
         assert!(dns_answers(&response.to_vec().unwrap(), &query).is_err());
-        response.set_response_code(ResponseCode::NoError);
-        response.queries_mut().clear();
+        response.metadata.response_code = ResponseCode::NoError;
+        response.queries.clear();
         response.add_query(Query::query(
             Name::from_ascii("example.com").unwrap(),
             RecordType::A,

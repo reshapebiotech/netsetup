@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { validateSettings } from '$lib/network/validators';
+import { validateSettings } from '#lib/network/validators.js';
 
 describe('network validators', () => {
   it('requires wifi ssid', () => {
@@ -60,7 +60,7 @@ describe('network validators', () => {
       false
     );
     expect(errors).toContain('Manual IPv4 address must be a valid IPv4 value');
-    expect(errors).toContain('IPv4 prefix must be between 0 and 32');
+    expect(errors).toContain('IPv4 prefix must be an integer between 0 and 32');
     expect(errors).toContain('Gateway must be a valid IPv4 value');
     expect(errors).toContain("DNS server 'aaaa' must be a valid IPv4 value");
   });

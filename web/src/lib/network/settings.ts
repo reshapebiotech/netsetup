@@ -1,4 +1,4 @@
-import type { NetworkSettings, Transport } from '$lib/network/types';
+import type { NetworkSettings, Transport } from '#lib/network/types.js';
 
 export interface NetworkFormState {
   transport: Transport;
@@ -10,7 +10,7 @@ export interface NetworkFormState {
   eapPassword: string;
   ipMethod: 'auto' | 'manual';
   ipv4Address: string;
-  ipv4Prefix: string;
+  ipv4Prefix: string | number;
   ipv4Gateway: string;
   dnsRaw: string;
 }
@@ -39,9 +39,13 @@ export function buildSettingsFromForm(state: NetworkFormState): NetworkSettings 
   }
 
   if (state.ipMethod === 'manual') {
+    const prefix = String(state.ipv4Prefix).trim();
     settings.ipv4 = {
       method: 'manual',
-      address_data: [{ address: state.ipv4Address.trim(), prefix: Number.parseInt(state.ipv4Prefix, 10) || 24 }],
+      address_data: [{
+        address: state.ipv4Address.trim(),
+        prefix: /^\d+$/.test(prefix) ? Number(prefix) : Number.NaN
+      }],
       gateway: state.ipv4Gateway.trim(),
       dns
     };

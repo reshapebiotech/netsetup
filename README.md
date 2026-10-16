@@ -18,6 +18,9 @@ An application that automates first-run network setup. It exposes a captive port
 
 You can run the stack locally with the mock controller.
 
+Development uses Node 24 LTS and Bun from `mise.toml`. TypeScript stays on the
+latest 6.x release supported by SvelteKit and `svelte-check`.
+
 1. **Install tools (once):**
    ```sh
    mise install
@@ -135,8 +138,10 @@ builds. No runtime branding configuration or separately installed assets are nee
 
 Tests use NetworkManager checkpoints through its system D-Bus API, accessed with
 `busctl`. The target device needs NetworkManager with checkpoint support,
-`busctl` with JSON output, `curl`, `ping`, and a working CA certificate bundle.
-The installer checks that the required commands exist.
+`busctl` with JSON output, `curl`, `ping`, `iptables`, and a working CA certificate bundle.
+The installer checks the required commands and source files before making changes.
+It atomically replaces the binary and service files, then explicitly restarts the
+service, so the same command supports upgrades while the app is running.
 
 Only one network-changing operation runs at a time. Each test creates a unique
 profile with autoconnect disabled and a 120-second rollback deadline. Existing

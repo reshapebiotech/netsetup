@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { cn } from '$lib/utils/cn';
+  import { cn } from '#lib/utils/cn.js';
   export let value = '';
   export let type: 'text' | 'password' | 'number' = 'text';
   export let placeholder = '';

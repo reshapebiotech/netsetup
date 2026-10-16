@@ -13,22 +13,24 @@
     "test:e2e": "playwright test"
   },
   "devDependencies": {
-    "@playwright/test": "^1.54.2",
-    "@sveltejs/adapter-static": "^3.0.8",
-    "@sveltejs/kit": "^2.48.1",
-    "@sveltejs/vite-plugin-svelte": "^6.2.1",
-    "@tailwindcss/forms": "^0.5.10",
-    "@types/node": "^24.3.0",
-    "autoprefixer": "^10.4.21",
+    "@playwright/test": "^1.64.1",
+    "@sveltejs/adapter-static": "^4.0.0",
+    "@sveltejs/kit": "^3.1.0",
+    "@sveltejs/vite-plugin-svelte": "^7.3.1",
+    "@tailwindcss/forms": "^0.5.11",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^24.19.2",
     "clsx": "^2.1.1",
-    "postcss": "^8.5.6",
-    "svelte": "^5.38.6",
-    "svelte-check": "^4.3.1",
-    "tailwind-merge": "^3.3.1",
-    "tailwindcss": "^3.4.17",
+    "svelte": "^5.57.2",
+    "svelte-check": "^4.7.6",
+    "tailwind-merge": "^3.7.0",
+    "tailwindcss": "^4.3.3",
     "tailwindcss-animate": "^1.0.7",
-    "typescript": "^5.9.2",
-    "vite": "^7.1.7",
-    "vitest": "^3.2.4"
+    "typescript": "^6.0.3",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.5"
+  },
+  "imports": {
+    "#lib/*": "./src/lib/*"
   }
 }

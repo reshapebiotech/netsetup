@@ -1,4 +1,4 @@
-import type { NetworkSettings, Transport } from '$lib/network/types';
+import type { NetworkSettings, Transport } from '#lib/network/types.js';
 
 function isValidIpv4(value: string): boolean {
   const parts = value.split('.');
@@ -33,7 +33,9 @@ export function validateSettings(transport: Transport, input: NetworkSettings, e
     const manual = input.ipv4.address_data?.[0];
     if (manual) {
       if (!isValidIpv4(manual.address)) errors.push('Manual IPv4 address must be a valid IPv4 value');
-      if (manual.prefix < 0 || manual.prefix > 32) errors.push('IPv4 prefix must be between 0 and 32');
+      if (!Number.isInteger(manual.prefix) || manual.prefix < 0 || manual.prefix > 32) {
+        errors.push('IPv4 prefix must be an integer between 0 and 32');
+      }
     }
     if (input.ipv4.gateway?.trim() && !isValidIpv4(input.ipv4.gateway.trim())) {
       errors.push('Gateway must be a valid IPv4 value');

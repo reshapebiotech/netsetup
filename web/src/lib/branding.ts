@@ -1,5 +1,5 @@
 import { readable } from 'svelte/store';
-import type { BrandingConfig } from '$lib/network/types';
+import type { BrandingConfig } from '#lib/network/types.js';
 
 export const reshapeBranding: BrandingConfig = {
   product_name: 'Reshape Imaging Device',

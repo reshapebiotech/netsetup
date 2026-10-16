@@ -1,7 +1,7 @@
 [tools]
 rust = "stable"
-bun = "1.2.23"
-node = "22"
+bun = "1.4.2"
+node = "24"
 just = "latest"
 "cargo:cargo-zigbuild" = "latest"
 "cargo:cargo-nextest" = "latest"

@@ -104,3 +104,27 @@ test('open Wi-Fi submits without credentials and preserves limited connectivity 
   await page.getByRole('button', { name: 'Save anyway', exact: true }).click();
   await expect(page.getByText('Connection saved. Local network connected; internet could not be verified.', { exact: true })).toBeVisible();
 });
+
+test('manual IPv4 preserves zero and rejects empty or fractional prefixes', async ({ page }) => {
+  const submissions: Array<{ ipv4: { address_data: Array<{ prefix: number }> } }> = [];
+  await page.route('**/api/network/ethernet/test', route => {
+    submissions.push(route.request().postDataJSON());
+    return route.fulfill({ status: 400, json: { error: 'Submission captured' } });
+  });
+  await page.goto('/setup/new/ethernet');
+  await expect(page.getByText('Online', { exact: true })).toBeVisible();
+  await page.getByRole('combobox', { name: 'IPv4 method' }).selectOption('manual');
+  await page.getByRole('textbox', { name: 'Address', exact: true }).fill('192.168.1.20');
+  await page.getByRole('textbox', { name: 'Gateway', exact: true }).fill('192.168.1.1');
+  const prefix = page.getByRole('spinbutton', { name: 'Prefix', exact: true });
+  await prefix.fill('0');
+  await page.getByRole('button', { name: 'Test connection', exact: true }).click();
+  await expect(page.getByText('Submission captured', { exact: true })).toBeVisible();
+  expect(submissions[0].ipv4.address_data[0].prefix).toBe(0);
+  for (const invalid of ['', '24.5']) {
+    await prefix.fill(invalid);
+    await page.getByRole('button', { name: 'Test connection', exact: true }).click();
+    await expect(page.getByText('IPv4 prefix must be an integer between 0 and 32', { exact: true })).toBeVisible();
+    expect(submissions).toHaveLength(1);
+  }
+});

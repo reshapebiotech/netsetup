@@ -2,14 +2,14 @@
   import { onMount } from 'svelte';
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
-  import Card from '$lib/components/ui/card.svelte';
-  import Button from '$lib/components/ui/button.svelte';
-  import Alert from '$lib/components/ui/alert.svelte';
-  import Loading from '$lib/components/ui/loading.svelte';
-  import Icon from '$lib/components/ui/icon.svelte';
-  import { networkApi } from '$lib/network/api';
-  import { resultSummary } from '$lib/network/results';
-  import type { ConnectionState } from '$lib/network/types';
+  import Card from '#lib/components/ui/card.svelte';
+  import Button from '#lib/components/ui/button.svelte';
+  import Alert from '#lib/components/ui/alert.svelte';
+  import Loading from '#lib/components/ui/loading.svelte';
+  import Icon from '#lib/components/ui/icon.svelte';
+  import { networkApi } from '#lib/network/api.js';
+  import { resultSummary } from '#lib/network/results.js';
+  import type { ConnectionState } from '#lib/network/types.js';
 
   const transport = $derived(page.params.transport === 'ethernet' ? 'ethernet' : 'wifi');
   const testId = $derived(page.params.testId ?? '');

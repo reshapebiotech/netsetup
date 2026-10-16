@@ -1,8 +1,8 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
-  import Button from '$lib/components/ui/button.svelte';
-  import Card from '$lib/components/ui/card.svelte';
-  import Icon from '$lib/components/ui/icon.svelte';
+  import Button from '#lib/components/ui/button.svelte';
+  import Card from '#lib/components/ui/card.svelte';
+  import Icon from '#lib/components/ui/icon.svelte';
 </script>
 
 <div class="space-y-6">

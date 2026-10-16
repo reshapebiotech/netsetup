@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { cn } from '$lib/utils/cn';
+  import { cn } from '#lib/utils/cn.js';
   export let value = '';
   export let options: Array<{ label: string; value: string }> = [];
   export let disabled = false;
