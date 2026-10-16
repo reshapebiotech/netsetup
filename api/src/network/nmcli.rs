@@ -110,7 +110,7 @@ impl NmcliNetworkController {
         Ok(test_id)
     }
 
-    pub fn new() -> Self {
+    pub fn new(hostname: Option<String>, password: String) -> Self {
         Self {
             active_tests: Arc::new(Mutex::new(HashMap::new())),
             ap_state: Arc::new(Mutex::new(ApSupervisorState {
@@ -118,9 +118,8 @@ impl NmcliNetworkController {
                 machine: ApSupervisorMachine::new(),
             })),
             supervisor_started: Arc::new(AtomicBool::new(false)),
-            hotspot_name: Self::resolve_hotspot_name(),
-            hotspot_password: std::env::var("DEVICE_AP_PASSWORD")
-                .unwrap_or_else(|_| "reshape123".to_string()),
+            hotspot_name: hostname.unwrap_or_else(Self::resolve_hotspot_name),
+            hotspot_password: password,
             probe_host: Self::resolve_probe_host(),
             mutation: Arc::new(Mutex::new(())),
             boot_grace: std::env::var("AP_BOOT_GRACE_SECONDS")

@@ -1,0 +1,5 @@
+# Optional: defaults to the device's existing hostname. This names the setup AP.
+# hostname = "ris0001"
+password = "replace-with-device-wifi-password"
+# Optional: error, warn, info (default), debug, or trace.
+# log_level = "info"

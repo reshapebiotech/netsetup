@@ -2,6 +2,7 @@
 rust = "stable"
 bun = "1.4.2"
 node = "24"
+zig = "0.17.0"
 just = "latest"
 "cargo:cargo-zigbuild" = "latest"
 "cargo:cargo-nextest" = "latest"

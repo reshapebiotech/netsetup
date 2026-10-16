@@ -3,6 +3,10 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   api:
@@ -36,3 +40,48 @@ jobs:
         run: cd web && bunx playwright install --with-deps chromium
       - name: E2E tests
         run: cd web && bun run test:e2e
+
+  binary:
+    needs: [api, web-unit, web-e2e]
+    runs-on: ubuntu-latest
+    env:
+      RESHAPE_NETSETUP_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || github.sha }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v5
+        with:
+          install_args: rust bun node zig cargo:cargo-zigbuild
+      - name: Install ARM64 Rust target
+        run: rustup target add aarch64-unknown-linux-gnu
+      - name: Build embedded frontend
+        run: cd web && bun install --frozen-lockfile && bun run build
+      - name: Build ARM64 binary for Debian 12 and newer
+        run: cargo zigbuild -p api --bin reshape-netsetup --release --locked --target aarch64-unknown-linux-gnu.2.36
+      - name: Package installer and binary
+        run: ./deploy/scripts/package-release.sh "$RESHAPE_NETSETUP_VERSION"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: reshape-netsetup-linux-arm64
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: binary
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: reshape-netsetup-linux-arm64
+          path: dist
+      - name: Publish versioned release bundle
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          flags=()
+          if [[ "$RELEASE_TAG" == *-* ]]; then flags+=(--prerelease); fi
+          gh release create "$RELEASE_TAG" dist/* --verify-tag --generate-notes "${flags[@]}"

@@ -7,7 +7,6 @@ Requires=NetworkManager.service
 Type=simple
 User=root
 Group=root
-Environment=RUST_LOG=info
 Environment=DNS_PORT=10053
 Environment=HTTP_PORT=80
 Environment=APP_PORT=3000
@@ -19,7 +18,7 @@ RuntimeDirectory=reshape-netsetup
 RuntimeDirectoryPreserve=yes
 WorkingDirectory=/opt/reshape-netsetup
 ExecStartPre=/usr/local/bin/captive-portal-rules.sh up
-ExecStart=/opt/reshape-netsetup/reshape-netsetup
+ExecStart=/opt/reshape-netsetup/reshape-netsetup --config /etc/reshape-netsetup/config.toml
 ExecStopPost=/usr/local/bin/captive-portal-rules.sh down
 Restart=always
 RestartSec=2

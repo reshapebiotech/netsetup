@@ -1,5 +1,6 @@
 mod api;
 mod captive_portal;
+mod config;
 pub mod dns;
 mod network;
 
@@ -101,11 +102,15 @@ async fn static_fallback(uri: Uri) -> Response {
 
 #[tokio::main]
 async fn main() {
+    let config = config::Config::command_line().unwrap_or_else(|error| {
+        eprintln!("{error}");
+        std::process::exit(2);
+    });
     // Initialize tracing
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info,tower_http=debug".into()),
+                .unwrap_or_else(|_| config.log_level.clone().into()),
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
@@ -170,7 +175,10 @@ async fn main() {
             Arc::new(crate::network::mock::MockNetworkController::new())
         } else {
             info!("Using Nmcli Network Controller");
-            Arc::new(crate::network::nmcli::NmcliNetworkController::new())
+            Arc::new(crate::network::nmcli::NmcliNetworkController::new(
+                config.hostname,
+                config.password,
+            ))
         };
 
     let state = AppState {

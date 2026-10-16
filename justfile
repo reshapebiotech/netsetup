@@ -24,4 +24,4 @@ run:
 
 build-arm64:
 	cd web && bun run build
-	cargo zigbuild -p api --bin reshape-netsetup --release --target aarch64-unknown-linux-gnu
+	cargo zigbuild -p api --bin reshape-netsetup --release --locked --target aarch64-unknown-linux-gnu.2.36
