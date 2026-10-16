@@ -66,8 +66,10 @@ sudo ./install.sh --legacy-dir /home/pi/machine-setup
 
 When no installed configuration exists, the installer imports `DEVICE_NAME` and
 `HOTSPOT_PASSWORD` from the old `.env`. It disables restart and stops the known
-`setup-api` and `setup-ui` containers and removes the legacy self-update
-cron entry. The old checkout and stopped containers remain available.
+`setup-api` and `setup-ui` containers, then removes them after the native service
+starts and responds over HTTP. It also removes the legacy self-update cron
+entry. The old checkout remains available as a configuration backup; Docker and
+unrelated containers are left in place.
 
 ### Building releases
 

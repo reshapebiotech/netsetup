@@ -77,21 +77,26 @@ if [[ "$missing" == 1 || ! -s /etc/ssl/certs/ca-certificates.crt ]]; then
 fi
 
 changed=0
+legacy_containers=()
 if [[ -n "$LEGACY_DIR" && -d "$LEGACY_DIR" ]]; then
   if command -v docker >/dev/null; then
     docker info >/dev/null 2>&1 || fail 'Start Docker so the legacy containers can be retired.'
     for container in setup-api setup-ui; do
       if metadata="$(docker inspect --format '{{.Config.Image}}|{{.HostConfig.RestartPolicy.Name}}|{{.State.Running}}' "$container" 2>/dev/null)"; then
-        case "$metadata" in
-          ghcr.io/reshapebiotech/machine-setup-api:*\|*|ghcr.io/reshapebiotech/machine-setup-ui:*\|*) ;;
-          *) fail "Refusing to stop an unrelated container named $container" ;;
+        case "$container" in
+          setup-api) expected_image=ghcr.io/reshapebiotech/machine-setup-api ;;
+          setup-ui) expected_image=ghcr.io/reshapebiotech/machine-setup-ui ;;
         esac
-        if [[ "$metadata" != *'|no|false' ]]; then
-          docker update --restart=no "$container" >/dev/null
-          docker stop "$container" >/dev/null
-          changed=1
-        fi
+        image="${metadata%%|*}"
+        [[ "$image" == "$expected_image":* || "$image" == "$expected_image"@sha256:* ]] || fail "Refusing to stop an unrelated container named $container"
+        legacy_containers+=("$container")
       fi
+    done
+    # Validate both identities before stopping either container.
+    for container in "${legacy_containers[@]}"; do
+      docker update --restart=no "$container" >/dev/null
+      docker stop "$container" >/dev/null
+      changed=1
     done
   fi
   if command -v crontab >/dev/null; then
@@ -137,4 +142,11 @@ systemctl daemon-reload
 systemctl enable reshape-netsetup.service
 systemctl restart reshape-netsetup.service
 systemctl is-active --quiet reshape-netsetup.service
+if (( ${#legacy_containers[@]} )); then
+  curl --fail --silent --output /dev/null --connect-timeout 2 --max-time 5 \
+    --retry 10 --retry-connrefused --retry-delay 1 http://127.0.0.1:3000/
+  for container in "${legacy_containers[@]}"; do
+    docker rm -- "$container" >/dev/null
+  done
+fi
 printf 'Installed reshape-netsetup %s\n' "$(cat /opt/reshape-netsetup/VERSION)"
