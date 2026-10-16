@@ -36,7 +36,7 @@
 <main class="mx-auto max-w-2xl space-y-6">
   <header class="space-y-2">
     <h1 class="text-3xl font-semibold tracking-tight">Connectivity</h1>
-    <p class="text-muted-foreground">Check whether this device can reach its router, the internet, and Reshape on its current Wi-Fi or Ethernet connection.</p>
+    <p class="text-muted-foreground">Check whether this device can reach its router, the internet, and its configured services on its current Wi-Fi or Ethernet connection.</p>
   </header>
   <Card className="space-y-4">
     <div class="flex flex-wrap items-center justify-between gap-3">

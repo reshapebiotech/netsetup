@@ -56,6 +56,7 @@ pub struct NmcliNetworkController {
     probe_host: String,
     mutation: Arc<Mutex<()>>,
     boot_grace: Duration,
+    endpoint_groups: Arc<Vec<crate::config::EndpointGroup>>,
 }
 
 impl NmcliNetworkController {
@@ -97,6 +98,7 @@ impl NmcliNetworkController {
             },
         );
         let tests = self.active_tests.clone();
+        let groups = self.endpoint_groups.clone();
         tokio::spawn(async move {
             let _guard = guard;
             // Let the browser receive the test ID before its AP connection disappears.
@@ -108,6 +110,7 @@ impl NmcliNetworkController {
                 &interface,
                 None,
                 None,
+                &groups,
             )
             .await;
             if let Some(record) = tests.lock().await.get_mut(&test_id) {
@@ -120,8 +123,13 @@ impl NmcliNetworkController {
         Ok(test_id)
     }
 
-    pub fn new(hostname: Option<String>, password: String) -> Self {
+    pub fn new(
+        hostname: Option<String>,
+        password: String,
+        endpoint_groups: Vec<crate::config::EndpointGroup>,
+    ) -> Self {
         Self {
+            endpoint_groups: Arc::new(endpoint_groups),
             active_tests: Arc::new(Mutex::new(HashMap::new())),
             ap_state: Arc::new(Mutex::new(ApSupervisorState {
                 save_in_progress: false,
@@ -348,6 +356,7 @@ impl NmcliNetworkController {
             probe_host: self.probe_host.clone(),
             mutation: self.mutation.clone(),
             boot_grace: self.boot_grace,
+            endpoint_groups: self.endpoint_groups.clone(),
         };
 
         tokio::spawn(async move {
@@ -845,6 +854,7 @@ impl NetworkController for NmcliNetworkController {
         self.ap_state.lock().await.save_in_progress = true;
         let tests = self.active_tests.clone();
         let ap_state = self.ap_state.clone();
+        let groups = self.endpoint_groups.clone();
         tokio::spawn(async move {
             let _guard = guard;
             // Let the accepted response reach the browser before switching its network.
@@ -856,6 +866,7 @@ impl NetworkController for NmcliNetworkController {
                 &report.interface,
                 Some(&report),
                 old_profile.as_deref(),
+                &groups,
             )
             .await;
             if let Some(record) = tests.lock().await.get_mut(&test_id) {
@@ -953,10 +964,17 @@ impl NetworkController for NmcliNetworkController {
         reset_result
     }
 
+    fn connectivity_groups(&self) -> Vec<crate::config::EndpointGroup> {
+        self.endpoint_groups.as_ref().clone()
+    }
+
     async fn check_current_connections(&self) -> NetResult<Vec<CurrentConnectionCheck>> {
         tokio::time::timeout(
             Duration::from_secs(60),
-            super::transaction::check_current_connections(&super::transaction::SystemCommands),
+            super::transaction::check_current_connections(
+                &super::transaction::SystemCommands,
+                &self.endpoint_groups,
+            ),
         )
         .await
         .map_err(|_| {

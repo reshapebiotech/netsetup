@@ -71,6 +71,8 @@ pub trait NetworkController: Send + Sync {
     /// Gets current internet connectivity status
     async fn get_connectivity(&self) -> Result<Connectivity>;
 
+    fn connectivity_groups(&self) -> Vec<crate::config::EndpointGroup>;
+
     /// Checks active client connections without modifying network configuration.
     async fn check_current_connections(&self) -> Result<Vec<CurrentConnectionCheck>>;
 

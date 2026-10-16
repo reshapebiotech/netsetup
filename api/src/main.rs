@@ -172,12 +172,15 @@ async fn main() {
     let network_controller: Arc<dyn NetworkController> =
         if std::env::var("MOCK_NETWORK").unwrap_or_default() == "1" {
             info!("Using Mock Network Controller");
-            Arc::new(crate::network::mock::MockNetworkController::new())
+            Arc::new(crate::network::mock::MockNetworkController::with_groups(
+                config.connectivity.groups,
+            ))
         } else {
             info!("Using Nmcli Network Controller");
             Arc::new(crate::network::nmcli::NmcliNetworkController::new(
                 config.hostname,
                 config.password,
+                config.connectivity.groups,
             ))
         };
 

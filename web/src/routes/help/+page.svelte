@@ -2,29 +2,27 @@
   import { getDevice } from '#lib/device.js';
   import { onMount } from 'svelte';
   import ConnectionReport from '#lib/components/network/connection-report.svelte';
-  import type { ConnectivityReport } from '#lib/network/types.js';
+  import type { ConnectivityReport, EndpointGroupConfig } from '#lib/network/types.js';
   import { networkApi } from '#lib/network/api.js';
   import { branding } from '#lib/branding.js';
 
   const device = getDevice();
 
-  const examples: { explanation: string; report: ConnectivityReport }[] = [
-    {
-      explanation: 'The device reached Reshape. Choose Save connection to keep these settings.',
-      report: { interface: 'wlan0', address: '192.168.1.42', gateway_reachable: true,
-        internet_verified: true, reshape_reachable: true }
-    },
-    {
-      explanation: 'The device has an address and its router responds. Choose Save anyway if a local connection is what you need, or ask IT to check internet access.',
-      report: { interface: 'wlan0', address: '192.168.1.42', gateway_reachable: true,
-        internet_verified: false, reshape_reachable: false }
-    },
-    {
-      explanation: 'Check with IT whether the network allows access to Reshape. Save anyway keeps the settings, but does not fix access to the service.',
-      report: { interface: 'wlan0', address: '192.168.1.42', gateway_reachable: true,
-        internet_verified: true, reshape_reachable: false }
-    }
-  ];
+  let groups = $state<EndpointGroupConfig[]>([]);
+  const examples = $derived([
+    { explanation: 'Every configured endpoint responded. Choose Save connection to keep these settings.', report: exampleReport('full') },
+    { explanation: 'The device has an address and its router responds, but services could not be reached. Choose Save anyway if a local connection is what you need, or ask IT to check access.', report: exampleReport('none') },
+    { explanation: 'Some endpoints responded and others did not. Use the group names and individual results to see what is affected. Required groups are needed for normal operation.', report: exampleReport('partial') }
+  ]);
+  function exampleReport(level: 'full' | 'partial' | 'none'): ConnectivityReport {
+    return {
+      interface: 'wlan0', address: '192.168.1.42', gateway_reachable: true,
+      internet_verified: level !== 'none',
+      endpoint_groups: groups.map(group => ({ ...group, endpoints: group.endpoints.map((endpoint, index) => ({
+        ...endpoint, reachable: level === 'full' || (level === 'partial' && (group.required || index < group.endpoints.length - 1))
+      })) }))
+    };
+  }
 
   let selectedExample = $state(1);
   const example = $derived(examples[selectedExample]);
@@ -38,6 +36,7 @@
   );
 
   onMount(() => {
+    void networkApi.getConnectivityGroups().then(value => { groups = value; }).catch(() => {});
     void networkApi.getApControllerStatus().then(status => {
       setupWifiName = typeof status.ssid === 'string' && status.ssid.length > 0 ? status.ssid : null;
       bootGraceSeconds = Number.isSafeInteger(status.boot_grace_seconds) && status.boot_grace_seconds >= 0
@@ -95,9 +94,9 @@
         <div class="space-y-2">
           <label for="example-result" class="block font-semibold">Choose the result you saw</label>
           <select id="example-result" bind:value={selectedExample} class="w-full rounded-md border-border bg-card py-3 text-base focus:border-primary focus:ring-primary">
-            <option value={0}>Connected and ready</option>
+            <option value={0}>Full connectivity</option>
             <option value={1}>Local connection only</option>
-            <option value={2}>Internet works, Reshape unreachable</option>
+            <option value={2}>Partial connectivity</option>
           </select>
         </div>
         <p>{example.explanation}</p>
@@ -122,7 +121,7 @@
           <p>After the device boots, it gives saved networks a startup window to provide internet access. If none does, setup Wi-Fi opens.</p>
         {/if}
         <p class="text-muted-foreground">Losing internet later does not automatically open setup Wi-Fi.</p>
-        <p class="text-muted-foreground">If the device is already online, you can open this tool over its existing network. Setup Wi-Fi test mode in Settings keeps the access point available until you turn it off.</p>
+        <p class="text-muted-foreground">If the device is already online, you can open this tool over its existing network. Setup Wi-Fi test mode in Settings keeps the access point available until you turn it off. It can run alongside Ethernet; testing another Wi-Fi network can still interrupt it.</p>
       </div>
     </details>
   </div>

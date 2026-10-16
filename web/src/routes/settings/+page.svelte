@@ -79,7 +79,7 @@
       Setup Wi-Fi test mode
     </h2>
     <p class="text-sm text-muted-foreground">
-      Keep the setup access point available until this mode is turned off.
+      Keep setup Wi-Fi available until this mode is turned off. It can run alongside an Ethernet connection, so you can configure the device while it stays online.
     </p>
 
     {#if apLoading}
@@ -93,6 +93,8 @@
     {#if apSavedMessage}
       <Alert tone="info">{apSavedMessage}</Alert>
     {/if}
+
+    <p class="text-sm text-muted-foreground">Testing another Wi-Fi network can still temporarily interrupt the setup access point.</p>
 
     <div class="flex items-center justify-between gap-3 rounded-md border border-border bg-card p-3">
       <div class="space-y-1">

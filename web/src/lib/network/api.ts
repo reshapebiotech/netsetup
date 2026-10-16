@@ -1,5 +1,6 @@
 import type {
   CurrentConnectionCheck,
+  EndpointGroupConfig,
   AccessPointControllerStatus,
   AccessPointPreferences,
   NetworkMacAddresses,
@@ -84,6 +85,12 @@ export const networkApi = {
 
   async scanEthernet(): Promise<EthernetNetwork[]> {
     const res = await withTimeout(api('/ethernet/scan'));
+    await parseOrThrow(res);
+    return res.json();
+  },
+
+  async getConnectivityGroups(): Promise<EndpointGroupConfig[]> {
+    const res = await withTimeout(api('/connectivity/groups'));
     await parseOrThrow(res);
     return res.json();
   },

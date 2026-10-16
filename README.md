@@ -15,7 +15,7 @@ includes the web interface.
 
 - Configure Wi-Fi and Ethernet with DHCP or static IP and DNS settings.
 - Test a connection before saving it, with separate results for local network,
-  gateway, internet, and Reshape service reachability.
+  gateway, internet, and configurable groups of service endpoints.
 - Restore the previous connection after a test so you can rejoin setup Wi-Fi
   and review the result.
 - Roll back failed network changes using NetworkManager checkpoints.

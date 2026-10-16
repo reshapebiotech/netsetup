@@ -50,7 +50,7 @@
   </header>
   <Card className="space-y-4">
     <p class="text-sm text-muted-foreground">
-      We will check the network, gateway, internet, and Reshape service, then restore your previous connection so you can review the results.
+      We will check the network, gateway, internet, and configured services, then restore your previous connection so you can review the results.
     </p>
     {#if transport === 'wifi'}
       <p class="text-sm text-muted-foreground">

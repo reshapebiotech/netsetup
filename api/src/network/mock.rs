@@ -22,12 +22,19 @@ pub struct MockNetworkController {
     tests: Arc<Mutex<HashMap<Uuid, MockTestRecord>>>,
     saved: Arc<Mutex<Option<SavedNetwork>>>,
     saved_settings: Mutex<NetworkSettings>,
+    endpoint_groups: Arc<Vec<crate::config::EndpointGroup>>,
     ap_prefs: Arc<Mutex<AccessPointPreferences>>,
 }
 
 impl MockNetworkController {
+    #[cfg(test)]
     pub fn new() -> Self {
+        Self::with_groups(vec![])
+    }
+
+    pub fn with_groups(groups: Vec<crate::config::EndpointGroup>) -> Self {
         Self {
+            endpoint_groups: Arc::new(groups),
             tests: Arc::new(Mutex::new(HashMap::new())),
             saved: Arc::new(Mutex::new(Some(SavedNetwork {
                 id: "managed-wifi-1".into(),
@@ -88,6 +95,7 @@ impl MockNetworkController {
         }
 
         let tests = self.tests.clone();
+        let groups = self.endpoint_groups.clone();
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_secs(3)).await;
             let mut guard = tests.lock().await;
@@ -117,7 +125,15 @@ impl MockNetworkController {
                     address: "192.168.1.42".into(),
                     gateway_reachable: Some(true),
                     internet_verified: ssid != "CoffeeShop_Guest",
-                    reshape_reachable: ssid != "CoffeeShop_Guest",
+                    endpoint_groups: groups
+                        .iter()
+                        .map(|g| {
+                            super::types::EndpointGroupResult::from_config(
+                                g,
+                                ssid != "CoffeeShop_Guest",
+                            )
+                        })
+                        .collect(),
                 });
             } else {
                 record.state =
@@ -279,6 +295,10 @@ impl NetworkController for MockNetworkController {
         Ok(())
     }
 
+    fn connectivity_groups(&self) -> Vec<crate::config::EndpointGroup> {
+        self.endpoint_groups.as_ref().clone()
+    }
+
     async fn check_current_connections(&self) -> NetResult<Vec<CurrentConnectionCheck>> {
         Ok(vec![CurrentConnectionCheck {
             name: "Home_Network".into(),
@@ -288,7 +308,11 @@ impl NetworkController for MockNetworkController {
                 address: "192.168.1.42".into(),
                 gateway_reachable: Some(true),
                 internet_verified: true,
-                reshape_reachable: true,
+                endpoint_groups: self
+                    .endpoint_groups
+                    .iter()
+                    .map(|g| super::types::EndpointGroupResult::from_config(g, true))
+                    .collect(),
             }),
             error: None,
         }])

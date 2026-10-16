@@ -91,7 +91,7 @@ export interface ConnectivityReport {
   address: string;
   gateway_reachable: boolean | null;
   internet_verified: boolean;
-  reshape_reachable: boolean;
+  endpoint_groups: EndpointGroupResult[];
 }
 
 export interface CurrentConnectionCheck {
@@ -107,3 +107,16 @@ export interface SavedNetworkDetails {
   security: 'open' | 'personal' | 'enterprise';
   edit_unavailable: string | null;
 }
+
+export interface EndpointConfig {
+  name: string;
+  url: string;
+  description: string;
+}
+export interface EndpointGroupConfig {
+  name: string;
+  required: boolean;
+  endpoints: EndpointConfig[];
+}
+export interface EndpointResult extends EndpointConfig { reachable: boolean; }
+export interface EndpointGroupResult extends EndpointGroupConfig { endpoints: EndpointResult[]; }

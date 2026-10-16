@@ -7,6 +7,7 @@
   import Alert from '#lib/components/ui/alert.svelte';
   import Loading from '#lib/components/ui/loading.svelte';
   import Icon from '#lib/components/ui/icon.svelte';
+  import { servicesReady } from '#lib/network/results.js';
   import { networkApi } from '#lib/network/api.js';
   import ConnectionReport from '#lib/components/network/connection-report.svelte';
   import type { ConnectionState } from '#lib/network/types.js';
@@ -64,9 +65,9 @@
       <Button onclick={loadStatus}>Reload result</Button>
     {:else if status?.status === 'Connected'}
       <ConnectionReport report={status.detail} />
-      {#if !status.detail.reshape_reachable}
+      {#if !servicesReady(status.detail)}
         <p class="text-sm text-muted-foreground">
-          You can save this connection, but the device may be unable to communicate with Reshape.
+          Some configured services could not be reached. You can still save this connection if local access is sufficient.
           A firewall, DNS settings, or a service outage may prevent these checks from succeeding.
         </p>
       {/if}
@@ -75,7 +76,7 @@
       <div class="flex flex-wrap items-center gap-3">
         <Button onclick={save} loading={movingToSave}>
           <span class="mr-2 inline-flex items-center"><Icon name="save" /></span>
-          {status.detail.reshape_reachable ? 'Save connection' : 'Save anyway'}
+          {servicesReady(status.detail) ? 'Save connection' : 'Save anyway'}
         </Button>
         <Button variant="secondary" onclick={retry}>Try a different network</Button>
       </div>

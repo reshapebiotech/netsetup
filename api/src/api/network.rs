@@ -38,6 +38,7 @@ pub fn router() -> Router<AppState> {
         .route("/status/{test_id}", get(status))
         .route("/connectivity", get(get_connectivity))
         .route("/connectivity/check", get(check_current_connections))
+        .route("/connectivity/groups", get(connectivity_groups))
         .route("/mac_addresses", get(get_mac_addresses))
         .route("/access_point", get(get_hotspot_status))
         .route("/access_point/controller", get(get_ap_controller_status))
@@ -227,6 +228,12 @@ async fn get_hotspot_status(
     Ok(Json(status))
 }
 
+async fn connectivity_groups(
+    State(state): State<AppState>,
+) -> Json<Vec<crate::config::EndpointGroup>> {
+    Json(state.network.connectivity_groups())
+}
+
 async fn check_current_connections(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<CurrentConnectionCheck>>, NetworkError> {
@@ -347,7 +354,7 @@ mod tests {
         assert_eq!(report["status"], "Connected");
         assert_eq!(report["detail"]["gateway_reachable"], true);
         assert_eq!(report["detail"]["internet_verified"], false);
-        assert_eq!(report["detail"]["reshape_reachable"], false);
+        assert_eq!(report["detail"]["endpoint_groups"], json!([]));
         server
             .post(&format!("/tests/{test_id}/save"))
             .await
