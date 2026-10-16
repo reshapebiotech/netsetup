@@ -60,6 +60,10 @@ else
   fail 'First installation requires --config CONFIG.toml with an AP password.'
 fi
 "$BIN_SOURCE" --check-config "$WORK/config.toml"
+legacy_ap_name=''
+if [[ -n "$LEGACY_DIR" && -f "$LEGACY_DIR/.env" ]]; then
+  legacy_ap_name="$("$BIN_SOURCE" --legacy-ap-name "$LEGACY_DIR/.env")"
+fi
 if [[ -f "$SCRIPT_DIR/VERSION" ]]; then
   cp "$SCRIPT_DIR/VERSION" "$WORK/VERSION"
 else
@@ -110,6 +114,22 @@ if [[ -n "$LEGACY_DIR" && -d "$LEGACY_DIR" ]]; then
       fi
     done
   fi
+fi
+
+if [[ -n "$legacy_ap_name" ]]; then
+  LC_ALL=C nmcli -t -f UUID,TYPE connection show > "$WORK/connections"
+  while IFS=: read -r uuid type; do
+    [[ "$type" == 802-11-wireless ]] || continue
+    name="$(LC_ALL=C nmcli --escape no -g connection.id connection show uuid "$uuid")"
+    [[ "$name" == "$legacy_ap_name" ]] || continue
+    mode="$(LC_ALL=C nmcli -g 802-11-wireless.mode connection show uuid "$uuid")"
+    [[ "$mode" == ap ]] || continue
+    autoconnect="$(LC_ALL=C nmcli -g connection.autoconnect connection show uuid "$uuid")"
+    if [[ "$autoconnect" == yes ]]; then
+      nmcli connection modify uuid "$uuid" connection.autoconnect no
+      changed=1
+    fi
+  done < "$WORK/connections"
 fi
 
 install_atomic() {

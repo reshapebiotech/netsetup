@@ -5,13 +5,14 @@ NetworkManager. Release bundles contain the ARM64 binary, frontend, installer,
 systemd unit, and captive portal rules. Rust, Bun, and Docker are not needed on
 the device.
 
-Download a published version on an authenticated workstation or provisioning
-controller. Replace the example version with the release you want:
+Download a published version on a workstation or provisioning controller. Replace the example version with the release you want:
 
 ```fish
 set version v0.1.0
 set bundle reshape-netsetup-$version-linux-arm64
-gh release download $version --repo reshapebiotech/reshape-netsetup --pattern "$bundle.tar.gz*"
+set url https://github.com/reshapebiotech/netsetup/releases/download/$version
+curl --fail --location --remote-name "$url/$bundle.tar.gz"
+curl --fail --location --remote-name "$url/$bundle.tar.gz.sha256"
 shasum -a 256 --check "$bundle.tar.gz.sha256"
 scp "$bundle.tar.gz" pi@device.local:/tmp/
 ```
@@ -68,8 +69,10 @@ When no installed configuration exists, the installer imports `DEVICE_NAME` and
 `HOTSPOT_PASSWORD` from the old `.env`. It disables restart and stops the known
 `setup-api` and `setup-ui` containers, then removes them after the native service
 starts and responds over HTTP. It also removes the legacy self-update cron
-entry. The old checkout remains available as a configuration backup; Docker and
-unrelated containers are left in place.
+entry and disables autoconnect on the matching legacy AP profile, so
+NetworkManager cannot bypass the boot-only AP policy. The active connection is
+preserved. The old checkout remains available as a configuration backup; Docker
+and unrelated containers are left in place.
 
 ### Building releases
 

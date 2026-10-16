@@ -39,3 +39,5 @@ The boot window is configurable with `AP_BOOT_GRACE_SECONDS`.
 
 See [INSTALL.md](INSTALL.md) for release bundles, minimal configuration, upgrades,
 and migration from the Docker installation.
+
+Licensed under [Apache-2.0](LICENSE).

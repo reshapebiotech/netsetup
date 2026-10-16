@@ -103,14 +103,21 @@ impl Config {
                 println!("Configuration valid");
                 std::process::exit(0);
             }
-            [flag, path] if flag == "--import-legacy-config" => {
+            [flag, path] if flag == "--import-legacy-config" || flag == "--legacy-ap-name" => {
                 let contents =
                     fs::read_to_string(path).map_err(|_| "Could not read legacy .env")?;
                 let config = Self::legacy(&contents)?;
-                print!(
-                    "{}",
-                    toml::to_string(&config).map_err(|_| "Could not serialize config")?
-                );
+                if flag == "--legacy-ap-name" {
+                    println!(
+                        "{}",
+                        config.hostname.ok_or("Legacy .env has no DEVICE_NAME")?
+                    );
+                } else {
+                    print!(
+                        "{}",
+                        toml::to_string(&config).map_err(|_| "Could not serialize config")?
+                    );
+                }
                 std::process::exit(0);
             }
             [flag] if flag == "--version" => {
@@ -122,7 +129,7 @@ impl Config {
             }
             [flag] if flag == "--help" => {
                 println!(
-                    "reshape-netsetup [--config PATH | --check-config PATH | --import-legacy-config PATH | --version]"
+                    "reshape-netsetup [--config PATH | --check-config PATH | --import-legacy-config PATH | --legacy-ap-name PATH | --version]"
                 );
                 std::process::exit(0);
             }

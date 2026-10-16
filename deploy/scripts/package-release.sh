@@ -17,8 +17,10 @@ install -m 0644 "$REPO_DIR/deploy/systemd/reshape-netsetup.service" "$WORK/$NAME
 install -m 0644 "$REPO_DIR/deploy/config.example.toml" "$WORK/$NAME/config.example.toml"
 install -m 0644 "$REPO_DIR/README.md" "$WORK/$NAME/README.md"
 install -m 0644 "$REPO_DIR/INSTALL.md" "$WORK/$NAME/INSTALL.md"
+install -m 0644 "$REPO_DIR/LICENSE" "$WORK/$NAME/LICENSE"
+python3 "$REPO_DIR/deploy/scripts/third-party-licenses.py" "$WORK/$NAME/THIRD_PARTY_LICENSES.txt"
 printf '%s\n' "$VERSION" > "$WORK/$NAME/VERSION"
-(cd "$WORK/$NAME" && shasum -a 256 reshape-netsetup install.sh captive-portal-rules.sh reshape-netsetup.service config.example.toml README.md INSTALL.md VERSION > SHA256SUMS)
+(cd "$WORK/$NAME" && shasum -a 256 reshape-netsetup install.sh captive-portal-rules.sh reshape-netsetup.service config.example.toml README.md INSTALL.md LICENSE THIRD_PARTY_LICENSES.txt VERSION > SHA256SUMS)
 tar -czf "$OUTPUT_DIR/$NAME.tar.gz" -C "$WORK" "$NAME"
 (cd "$OUTPUT_DIR" && shasum -a 256 "$NAME.tar.gz" > "$NAME.tar.gz.sha256")
 printf '%s\n' "$OUTPUT_DIR/$NAME.tar.gz"
