@@ -7,8 +7,8 @@ Runs on 64-bit Debian/Raspberry Pi OS 12+ with NetworkManager. The Rust binary
 includes the web interface.
 
 <p align="center">
-  <img src="docs/screenshots/network-configuration.png" alt="Network configuration overview" width="48%">
-  <img src="docs/screenshots/wifi-configuration.png" alt="Wi-Fi configuration and connection testing" width="48%">
+  <img src="docs/screenshots/network-configuration.png" alt="Network configuration overview" width="48%" align="top">
+  <img src="docs/screenshots/wifi-configuration.png" alt="Wi-Fi configuration and connection testing" width="48%" align="top">
 </p>
 
 ## Features
