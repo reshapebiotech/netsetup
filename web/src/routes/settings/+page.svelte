@@ -1,6 +1,4 @@
 <script lang="ts">
-  import { getDevice } from '#lib/device.js';
-  const device = getDevice();
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import Card from '#lib/components/ui/card.svelte';
@@ -68,11 +66,11 @@
 
 <div class="space-y-6">
   <header class="space-y-2">
-    <p class="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">{device.hostname ?? 'Network setup'}</p>
-    <h1 class="flex items-center gap-2 text-3xl font-bold">
+    <h1 class="flex items-center gap-2 text-3xl font-semibold">
       <Icon name="settings" className="h-6 w-6 text-primary" />
       Settings
     </h1>
+    <p class="text-base text-muted-foreground">Device information and setup Wi-Fi preferences.</p>
   </header>
 
   <Card className="space-y-4">
@@ -96,7 +94,7 @@
       <Alert tone="info">{apSavedMessage}</Alert>
     {/if}
 
-    <div class="flex items-center justify-between gap-3 rounded-md border border-border bg-white p-3">
+    <div class="flex items-center justify-between gap-3 rounded-md border border-border bg-card p-3">
       <div class="space-y-1">
         <p class="text-sm font-medium">Keep setup access point available</p>
         <p class="text-xs text-muted-foreground">
@@ -110,15 +108,11 @@
         aria-label="Toggle setup Wi-Fi test mode"
         disabled={apLoading || apSaving}
         onclick={() => (apPersistent = !apPersistent)}
-        class={`relative inline-flex h-7 w-12 items-center rounded-full transition ${
-          apPersistent ? 'bg-primary' : 'bg-muted'
-        } disabled:cursor-not-allowed disabled:opacity-60`}
+        class="inline-flex h-11 w-14 shrink-0 items-center justify-center rounded-lg disabled:cursor-not-allowed disabled:opacity-60"
       >
-        <span
-          class={`inline-block h-5 w-5 transform rounded-full bg-white transition ${
-            apPersistent ? 'translate-x-6' : 'translate-x-1'
-          }`}
-        ></span>
+        <span class={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${apPersistent ? 'bg-primary' : 'bg-muted'}`}>
+          <span class={`inline-block h-5 w-5 rounded-full transition-transform ${apPersistent ? 'translate-x-6 bg-primary-foreground' : 'translate-x-1 bg-foreground'}`}></span>
+        </span>
       </button>
     </div>
 

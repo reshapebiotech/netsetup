@@ -1,12 +1,13 @@
 <script lang="ts">
   import { getDevice } from '#lib/device.js';
-  const device = getDevice();
   import Button from '#lib/components/ui/button.svelte';
   import Card from '#lib/components/ui/card.svelte';
   import Alert from '#lib/components/ui/alert.svelte';
   import ConnectionReport from '#lib/components/network/connection-report.svelte';
   import { networkApi } from '#lib/network/api.js';
   import type { CurrentConnectionCheck } from '#lib/network/types.js';
+
+  const device = getDevice();
 
   let results = $state<CurrentConnectionCheck[] | null>(null);
   let checking = $state(false);
@@ -34,7 +35,7 @@
 
 <main class="mx-auto max-w-2xl space-y-6">
   <header class="space-y-2">
-    <h1 class="text-3xl font-bold tracking-tight">Connectivity</h1>
+    <h1 class="text-3xl font-semibold tracking-tight">Connectivity</h1>
     <p class="text-muted-foreground">Check whether this device can reach its router, the internet, and Reshape on its current Wi-Fi or Ethernet connection.</p>
   </header>
   <Card className="space-y-4">

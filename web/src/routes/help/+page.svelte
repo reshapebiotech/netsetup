@@ -1,11 +1,12 @@
 <script lang="ts">
   import { getDevice } from '#lib/device.js';
-  const device = getDevice();
   import { onMount } from 'svelte';
   import ConnectionReport from '#lib/components/network/connection-report.svelte';
   import type { ConnectivityReport } from '#lib/network/types.js';
   import { networkApi } from '#lib/network/api.js';
   import { branding } from '#lib/branding.js';
+
+  const device = getDevice();
 
   const examples: { explanation: string; report: ConnectivityReport }[] = [
     {
@@ -54,8 +55,8 @@
 <main class="mx-auto max-w-2xl">
   <header class="mb-6 space-y-3">
     <a href="/" class="inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline">← Back to network setup</a>
-    <h1 class="text-3xl font-bold tracking-tight">Network setup help</h1>
-    <div class="space-y-2 border-l-2 border-primary/40 pl-4">
+    <h1 class="text-3xl font-semibold tracking-tight">Network setup help</h1>
+    <div class="space-y-2 rounded-lg border border-border bg-card p-4">
       {#if setupWifiName}
         <p class="text-sm text-muted-foreground">This device’s Wi-Fi network</p>
         <p class="text-xl font-semibold break-words"><bdi>{setupWifiName}</bdi></p>
@@ -64,7 +65,7 @@
     </div>
   </header>
 
-  <div class="overflow-hidden rounded-xl border border-border bg-white shadow-xs">
+  <div class="overflow-hidden rounded-xl border border-border bg-card ">
     <details class="help-topic" name="help-topic">
       <summary>
         <span><span class="topic-title">Setup Wi-Fi disappeared</span><span class="topic-hint">During a connection test or after saving</span></span>
@@ -93,7 +94,7 @@
       <div class="answer">
         <div class="space-y-2">
           <label for="example-result" class="block font-semibold">Choose the result you saw</label>
-          <select id="example-result" bind:value={selectedExample} class="w-full rounded-md border-border bg-white py-3 text-base focus:border-primary focus:ring-primary">
+          <select id="example-result" bind:value={selectedExample} class="w-full rounded-md border-border bg-card py-3 text-base focus:border-primary focus:ring-primary">
             <option value={0}>Connected and ready</option>
             <option value={1}>Local connection only</option>
             <option value={2}>Internet works, Reshape unreachable</option>

@@ -8,8 +8,8 @@
 <div class="space-y-6">
   <header class="space-y-2">
     <p class="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">New Profile</p>
-    <h1 class="text-3xl font-bold">Choose connection type</h1>
-    <p class="text-sm text-muted-foreground">Pick one managed network profile. Saving a new one replaces the previous profile.</p>
+    <h1 class="text-3xl font-semibold">Choose connection type</h1>
+    <p class="text-sm text-muted-foreground">Choose how to connect. Your existing connection stays in place until you test and save a replacement.</p>
   </header>
 
   <div class="grid gap-4 sm:grid-cols-2">

@@ -10,6 +10,7 @@
   import Button from '#lib/components/ui/button.svelte';
 
   const device = getDevice();
+
   let details = $state<SavedNetworkDetails | null>(null);
   let error = $state('');
   let loading = $state(true);
@@ -28,7 +29,7 @@
 <main class="mx-auto max-w-2xl space-y-6">
   <header class="space-y-3">
     <a href="/" class="inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline">← Back to networks</a>
-    <h1 class="break-words text-3xl font-bold">{details?.settings.ssid ?? details?.network.display_name ?? 'Network configuration'}</h1>
+    <h1 class="break-words text-3xl font-semibold">{details?.settings.ssid ?? details?.network.display_name ?? 'Network configuration'}</h1>
     <p class="text-muted-foreground">Saved settings for this connection.</p>
   </header>
   {#if loading}

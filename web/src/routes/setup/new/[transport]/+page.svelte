@@ -144,7 +144,7 @@
 <div class="space-y-6">
   <header class="space-y-2">
     <p class="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">{editId ? 'Edit' : 'New'} {transport} profile</p>
-    <h1 class="flex items-center gap-2 text-3xl font-bold">
+    <h1 class="flex items-center gap-2 text-3xl font-semibold">
       <Icon name={transport === 'wifi' ? 'wifi' : 'ethernet'} className="h-6 w-6 text-primary" />
       Configure and test
     </h1>
@@ -154,13 +154,6 @@
     <Loading label="Loading saved settings…" />
   {:else if profileError}
     <Alert tone="error">{profileError}</Alert>
-  {/if}
-
-  {#if canKeepPassword}
-    <label class="flex items-center gap-2 text-sm">
-      <input type="checkbox" bind:checked={keepPassword} class="rounded border-input" />
-      Keep saved password
-    </label>
   {/if}
 
   {#if submitError}
@@ -190,18 +183,18 @@
         <Loading label="Scanning nearby Wi-Fi networks…" />
       {/if}
 
-      <label class="flex items-center gap-2 text-sm">
+      <label class="flex min-h-11 items-center gap-2 text-sm">
         <input type="checkbox" bind:checked={hiddenSsid} class="rounded border-input" />
-        Hidden SSID
+        Enter network name manually
       </label>
 
       {#if hiddenSsid}
-        <label class="space-y-2 text-sm font-medium">
+        <label class="block space-y-2 text-sm font-medium">
           SSID
-          <Input bind:value={ssid} placeholder="Enter hidden network name" />
+          <Input bind:value={ssid} placeholder="Enter network name" />
         </label>
       {:else}
-        <label class="space-y-2 text-sm font-medium">
+        <label class="block space-y-2 text-sm font-medium">
           SSID
           <Select
             bind:value={ssid}
@@ -211,10 +204,17 @@
         </label>
       {/if}
 
-      <label class="flex items-center gap-2 text-sm">
+      <label class="flex min-h-11 items-center gap-2 text-sm">
         <input type="checkbox" bind:checked={enterprise} class="rounded border-input" />
         Enterprise Wi-Fi (PEAP/MSCHAPv2)
       </label>
+
+      {#if !enterprise && canKeepPassword}
+        <label class="flex items-center gap-3 rounded-lg border border-border bg-background/30 px-3 py-3 text-sm">
+          <input type="checkbox" bind:checked={keepPassword} class="rounded border-input" />
+          Keep saved password
+        </label>
+      {/if}
 
       {#if !enterprise && !openNetwork && !retainingPassword}
         <div class="space-y-2">
@@ -245,7 +245,7 @@
         Ethernet authentication
       </h2>
 
-      <label class="flex items-center gap-2 text-sm">
+      <label class="flex min-h-11 items-center gap-2 text-sm">
         <input type="checkbox" bind:checked={enterprise} class="rounded border-input" />
         Wired 802.1X (PEAP/MSCHAPv2)
       </label>
@@ -258,10 +258,17 @@
         <Icon name="network" className="h-5 w-5 text-primary" />
         802.1X credentials
       </h2>
-      <label class="space-y-2 text-sm font-medium">
+      <label class="block space-y-2 text-sm font-medium">
         Identity
         <Input bind:value={eapLogin} placeholder="user@example.com" disabled={submitting} />
       </label>
+      {#if canKeepPassword}
+        <label class="flex items-center gap-3 rounded-lg border border-border bg-background/30 px-3 py-3 text-sm">
+          <input type="checkbox" bind:checked={keepPassword} class="rounded border-input" />
+          Keep saved password
+        </label>
+      {/if}
+
       {#if !retainingPassword}
       <div class="space-y-2">
         <label for="enterprise-password" class="block text-sm font-medium">Password</label>
@@ -292,29 +299,29 @@
       IPv4 and DNS
     </h2>
 
-    <label class="space-y-2 text-sm font-medium">
+    <label class="block space-y-2 text-sm font-medium">
       IPv4 method
       <Select bind:value={ipMethod} options={[{ label: 'Automatic (DHCP)', value: 'auto' }, { label: 'Manual', value: 'manual' }]} />
     </label>
 
     {#if ipMethod === 'manual'}
       <div class="grid gap-3 sm:grid-cols-2">
-        <label class="space-y-2 text-sm font-medium">
+        <label class="block space-y-2 text-sm font-medium">
           Address
           <Input bind:value={ipv4Address} placeholder="192.168.1.20" disabled={submitting} />
         </label>
-        <label class="space-y-2 text-sm font-medium">
+        <label class="block space-y-2 text-sm font-medium">
           Prefix
           <Input bind:value={ipv4Prefix} type="number" disabled={submitting} />
         </label>
       </div>
-      <label class="space-y-2 text-sm font-medium">
+      <label class="block space-y-2 text-sm font-medium">
         Gateway
         <Input bind:value={ipv4Gateway} placeholder="192.168.1.1" disabled={submitting} />
       </label>
     {/if}
 
-    <label class="space-y-2 text-sm font-medium">
+    <label class="block space-y-2 text-sm font-medium">
       Custom DNS servers (comma separated)
       <Input bind:value={dnsRaw} placeholder="1.1.1.1,8.8.8.8" disabled={submitting} />
       <p class="text-xs font-normal text-muted-foreground">

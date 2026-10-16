@@ -43,7 +43,7 @@
 <div class="space-y-6">
   <header class="space-y-2">
     <p class="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">Testing connection</p>
-    <h1 class="flex items-center gap-2 text-3xl font-bold">
+    <h1 class="flex items-center gap-2 text-3xl font-semibold">
       <Icon name={transport === 'wifi' ? 'wifi' : 'ethernet'} className="h-6 w-6 text-primary" />
       Hold tight while we switch networks
     </h1>

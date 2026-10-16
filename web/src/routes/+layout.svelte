@@ -38,10 +38,10 @@
   };
 
   const statusClass: Record<DeviceStatus, string> = {
-    checking: 'border-border bg-white text-foreground',
-    online: 'border-primary/30 bg-primary/10 text-foreground',
-    no_internet: 'border-amber-300 bg-amber-50 text-foreground',
-    disconnected: 'border-destructive/30 bg-destructive/10 text-foreground'
+    checking: 'text-muted-foreground',
+    online: 'text-success',
+    no_internet: 'text-warning',
+    disconnected: 'text-destructive'
   };
 
   const statusIcon: Record<DeviceStatus, 'refresh' | 'check' | 'alert'> = {
@@ -80,43 +80,73 @@
   <link rel="icon" href={$branding.favicon_path} />
 </svelte:head>
 
-<div
-  class="mx-auto min-h-screen w-full max-w-4xl px-4 py-8 sm:px-6 lg:px-10"
->
-  <header class="mb-8 overflow-hidden rounded-xl bg-slate-900 text-white shadow-sm">
-    <div class="flex flex-wrap items-center justify-between gap-4 p-4 sm:px-5">
-    {#if $branding.logo_path}
-      <a href="/" aria-label="Back to home" class="shrink-0">
-        <img src={$branding.logo_path} alt="Reshape" class="h-auto max-h-12 w-auto object-contain" />
-      </a>
-    {/if}
-    {#if device.hostname}
-      <p class="min-w-0 flex-1 break-words text-sm font-semibold"><bdi>{device.hostname}</bdi></p>
-    {/if}
-    <div class={`rounded-lg border px-3 py-2 text-sm sm:max-w-sm ${statusClass[deviceStatus]}`} title={statusTooltip[deviceStatus]}>
-      <p class="flex items-center gap-2 font-medium" title={statusTooltip[deviceStatus]}>
-        <Icon name={statusIcon[deviceStatus]} className={deviceStatus === 'checking' ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
-        {statusText[deviceStatus]}
-      </p>
-      <p class="mt-0.5 text-[11px] text-muted-foreground">
-        Last updated:
+<a href="#page-content" class="skip-link">Skip to content</a>
+<div class="app-shell">
+  <header class="app-header">
+    <div class="header-top">
+      <div class="device-brand">
+        <a href="/" aria-label="Back to home" class="brand-link">
+          <img src={$branding.logo_path} alt="Reshape" class="brand-logo" />
+        </a>
+        <div class="device-identity">
+          <span class="device-caption">Network setup</span>
+          <span class="device-name"><bdi>{device.hostname ?? 'Connecting…'}</bdi></span>
+        </div>
+      </div>
+      <div class="device-status" title={statusTooltip[deviceStatus]}>
+        <p class={`status-label ${statusClass[deviceStatus]}`}>
+          <Icon name={statusIcon[deviceStatus]} className={deviceStatus === 'checking' ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
+          {statusText[deviceStatus]}
+        </p>
         {#if lastUpdatedAt}
-          {lastUpdatedAt.toLocaleTimeString()}
-        {:else}
-          --
+          <p class="status-time">Updated {lastUpdatedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
         {/if}
-      </p>
+      </div>
     </div>
-    </div>
-    <nav aria-label="Main navigation" class="grid grid-cols-4 gap-1 border-t border-white/15 p-2">
+    <nav aria-label="Main navigation" class="main-nav">
       {#each navigation as item (item.href)}
         {@const active = item.href === '/' ? page.url.pathname === '/' || page.url.pathname.startsWith('/setup/') || page.url.pathname.startsWith('/networks/') : page.url.pathname.startsWith(item.href)}
-        <a href={item.href} aria-current={active ? 'page' : undefined}
-          class={['flex min-h-11 items-center justify-center rounded-md px-1 text-sm font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white', active ? 'bg-white/15 text-white' : 'text-slate-300 hover:bg-white/10 hover:text-white']}>
-          {item.label}
-        </a>
+        <a href={item.href} aria-current={active ? 'page' : undefined}>{item.label}</a>
       {/each}
     </nav>
   </header>
-  {@render children()}
+  <div id="page-content" class="page-content" tabindex="-1">
+    {@render children()}
+  </div>
 </div>
+
+<style>
+  .app-shell { width: min(100% - 3rem, 56rem); margin-inline: auto; }
+  .app-header { padding-top: 2rem; border-bottom: 1px solid hsl(var(--border)); }
+  .header-top { display: flex; align-items: center; justify-content: space-between; gap: 1.5rem; padding: 0.5rem 0 1.75rem; }
+  .device-brand { display: flex; align-items: center; min-width: 0; gap: 1.5rem; }
+  .brand-link { flex-shrink: 0; padding-block: 0.5rem; }
+  .brand-logo { display: block; width: 8rem; height: auto; }
+  .device-identity { display: grid; gap: 0.25rem; min-width: 0; padding-left: 1.5rem; border-left: 1px solid hsl(var(--border)); }
+  .device-caption { font-size: 0.75rem; color: hsl(var(--muted-foreground)); }
+  .device-name { font-size: 0.875rem; font-weight: 500; overflow-wrap: anywhere; }
+  .device-status { flex-shrink: 0; text-align: right; }
+  .status-label { display: flex; justify-content: flex-end; align-items: center; gap: 0.5rem; font-size: 0.8125rem; font-weight: 500; }
+  .status-time { margin-top: 0.25rem; font-size: 0.6875rem; color: hsl(var(--muted-foreground)); }
+  .main-nav { display: flex; gap: 1.75rem; }
+  .main-nav a { display: flex; align-items: center; min-height: 3rem; padding: 0.5rem 0; border-bottom: 2px solid transparent; margin-bottom: -1px; color: hsl(var(--muted-foreground)); font-size: 0.875rem; font-weight: 500; transition: color 150ms; }
+  .main-nav a:hover { color: hsl(var(--foreground)); }
+  .main-nav a[aria-current="page"] { border-color: hsl(var(--primary)); color: hsl(var(--foreground)); }
+  .page-content { padding-block: 2.75rem 4rem; }
+  .page-content:focus { outline: none; }
+  .skip-link { position: fixed; top: 0.5rem; left: 1rem; z-index: 20; padding: 0.75rem 1rem; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); border-radius: 0.5rem; transform: translateY(-150%); }
+  .skip-link:focus { transform: translateY(0); }
+  @media (max-width: 540px) {
+    .app-shell { width: calc(100% - 2rem); }
+    .app-header { padding-top: 1.25rem; }
+    .header-top { align-items: flex-start; gap: 1rem; padding-bottom: 1.25rem; }
+    .device-brand { flex-direction: column; align-items: flex-start; gap: 0.75rem; }
+    .brand-logo { width: 7rem; }
+    .device-identity { padding-left: 0; border: 0; gap: 0.125rem; }
+    .device-caption { display: none; }
+    .device-status { padding-top: 0.625rem; }
+    .main-nav { justify-content: space-between; gap: 0.75rem; }
+    .main-nav a { font-size: 0.8125rem; }
+    .page-content { padding-block: 2rem 3rem; }
+  }
+</style>
