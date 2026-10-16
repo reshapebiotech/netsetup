@@ -9,9 +9,9 @@
 <select
   bind:value
   {disabled}
-  class={cn('w-full rounded-md border border-input bg-white px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring', className)}
+  class={cn('w-full rounded-md border border-input bg-white px-3 py-2 text-base outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-sm', className)}
 >
-  {#each options as option}
+  {#each options as option (option.value)}
     <option value={option.value}>{option.label}</option>
   {/each}
 </select>

@@ -134,6 +134,21 @@ Reshape copy and the support link live in `web/src/lib/branding.ts`. The logo an
 favicon live in `web/static/branding/` and are embedded with the frontend in release
 builds. No runtime branding configuration or separately installed assets are needed.
 
+## Captive portal
+
+Setup Wi-Fi intercepts DNS over UDP and TCP and directs IPv4 lookups to
+`CAPTIVE_IP` (default `10.42.0.1`). IPv6 lookups return empty successful answers
+so they do not invalidate the IPv4 answer.
+
+Apple, Android, Windows, Firefox, and GNOME HTTP connectivity probes receive an
+uncached redirect to the setup root, rather than an unknown frontend route.
+The page and its assets are served from the device without internet access.
+
+To verify automatic discovery, join setup Wi-Fi with a phone and wait for its
+login screen before opening a browser manually. Confirm that the Reshape network
+configuration screen loads. A successful HTTP probe test verifies interception;
+the automatic popup itself must be checked on a real client.
+
 ## Connection testing
 
 Tests use NetworkManager checkpoints through its system D-Bus API, accessed with

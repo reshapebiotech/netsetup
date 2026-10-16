@@ -123,7 +123,15 @@
             <Button variant="destructive" loading={resetLoading} disabled={resetLoading} onclick={confirmResetAll}>Reset all networks</Button>
           </div>
         {:else}
-          <Button variant="destructive" disabled={resetLoading} onclick={beginResetAll}>Reset all networks</Button>
+          <div class="flex flex-wrap items-center gap-2">
+            <Button variant="secondary" onclick={refreshHome} loading={loading} disabled={resetLoading}>
+              {#if !loading}
+                <span class="mr-2 inline-flex items-center"><Icon name="refresh" /></span>
+              {/if}
+              Refresh
+            </Button>
+            <Button variant="destructive" disabled={resetLoading} onclick={beginResetAll}>Reset all networks</Button>
+          </div>
         {/if}
       </div>
     </div>
@@ -191,20 +199,14 @@
     </Card>
   {/if}
 
-  <div class="flex flex-wrap items-center gap-3">
-    <Button onclick={() => goto('/setup/new')} disabled={resetLoading}>
-      <span class="mr-2 inline-flex items-center"><Icon name="plus" /></span>
-      Add new network
-    </Button>
+  <div class="flex items-center justify-between gap-3">
     <Button variant="secondary" onclick={() => goto('/settings')} disabled={resetLoading}>
       <span class="mr-2 inline-flex items-center"><Icon name="settings" /></span>
       Settings
     </Button>
-    <Button variant="secondary" onclick={refreshHome} loading={loading} disabled={resetLoading}>
-      {#if !loading}
-        <span class="mr-2 inline-flex items-center"><Icon name="refresh" /></span>
-      {/if}
-      Refresh
+    <Button onclick={() => goto('/setup/new')} disabled={resetLoading}>
+      <span class="mr-2 inline-flex items-center"><Icon name="plus" /></span>
+      Add new network
     </Button>
   </div>
 </div>

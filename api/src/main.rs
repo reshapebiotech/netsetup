@@ -1,4 +1,5 @@
 mod api;
+mod captive_portal;
 pub mod dns;
 mod network;
 
@@ -12,6 +13,7 @@ use axum::http::{Request, StatusCode, Uri};
 use axum::response::{IntoResponse, Response};
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::net::{TcpListener, UdpSocket};
 use tower::util::ServiceExt;
 use tower_http::services::{ServeDir, ServeFile};
@@ -110,6 +112,20 @@ async fn main() {
 
     info!("Starting reshape-netsetup API...");
 
+    let captive_ip: Ipv4Addr = std::env::var("CAPTIVE_IP")
+        .unwrap_or_else(|_| "10.42.0.1".into())
+        .parse()
+        .expect("CAPTIVE_IP must be an IPv4 address");
+    let http_port: u16 = std::env::var("HTTP_PORT")
+        .unwrap_or_else(|_| "80".into())
+        .parse()
+        .expect("HTTP_PORT must be a port number");
+    let portal_url = if http_port == 80 {
+        format!("http://{captive_ip}/")
+    } else {
+        format!("http://{captive_ip}:{http_port}/")
+    };
+
     // Start DNS Server in background
     tokio::spawn(async move {
         let port: u16 = std::env::var("DNS_PORT")
@@ -117,13 +133,12 @@ async fn main() {
             .parse()
             .unwrap_or(10053);
         let addr = SocketAddr::from(([0, 0, 0, 0], port));
-        let handler = CaptivePortalDns::new(Ipv4Addr::new(10, 42, 0, 1));
+        let handler = CaptivePortalDns::new(captive_ip);
         let mut server = hickory_server::Server::new(handler);
 
         match UdpSocket::bind(addr).await {
             Ok(udp_socket) => {
                 server.register_socket(udp_socket);
-                info!("DNS Captive Portal listening on UDP {}", addr);
             }
             Err(e) => {
                 error!(
@@ -133,6 +148,15 @@ async fn main() {
                 return;
             }
         }
+
+        match TcpListener::bind(addr).await {
+            Ok(listener) => server.register_listener(listener, Duration::from_secs(5), 32),
+            Err(e) => {
+                error!("Failed to bind DNS TCP listener on {}: {}", addr, e);
+                return;
+            }
+        }
+        info!("DNS Captive Portal listening on UDP and TCP {}", addr);
 
         if let Err(e) = server.block_until_done().await {
             error!("DNS server error: {}", e);
@@ -167,6 +191,7 @@ async fn main() {
 
     // Build our application with routes
     let app = Router::new()
+        .merge(captive_portal::router(portal_url))
         .nest("/api", api::router())
         .fallback(static_fallback)
         .with_state(state);

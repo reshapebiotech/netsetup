@@ -1,13 +1,18 @@
 <script lang="ts">
+  import type { HTMLButtonAttributes } from 'svelte/elements';
   import { cn } from '#lib/utils/cn.js';
 
-  export let type: 'button' | 'submit' | 'reset' = 'button';
-  export let variant: 'primary' | 'secondary' | 'destructive' = 'primary';
-  export let disabled = false;
-  export let loading = false;
-  export let className = '';
-  export let onclick: ((event: MouseEvent) => void) | undefined = undefined;
-  $: isDisabled = disabled || loading;
+  type Props = Omit<HTMLButtonAttributes, 'class'> & {
+    variant?: 'primary' | 'secondary' | 'destructive';
+    loading?: boolean;
+    className?: string;
+  };
+
+  let {
+    type = 'button', variant = 'primary', disabled = false, loading = false,
+    className = '', children, ...attributes
+  }: Props = $props();
+  const isDisabled = $derived(disabled || loading);
 
   const styles = {
     primary: 'bg-primary text-primary-foreground hover:opacity-90',
@@ -17,10 +22,10 @@
 </script>
 
 <button
+  {...attributes}
   {type}
   disabled={isDisabled}
   aria-busy={loading}
-  on:click={onclick}
   class={cn(
     'inline-flex h-10 items-center justify-center rounded-md px-4 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60',
     styles[variant],
@@ -30,5 +35,5 @@
   {#if loading}
     <span class="h-4 w-4 animate-spin rounded-full border-2 border-current border-r-transparent"></span>
   {/if}
-  <slot />
+  {@render children?.()}
 </button>

@@ -157,12 +157,15 @@
       </label>
 
       {#if !enterprise && !openNetwork}
-        <label class="space-y-2 text-sm font-medium">
-          Password
+        <div class="space-y-2">
+          <label for="wifi-password" class="block text-sm font-medium">Password</label>
           <div class="flex items-center gap-2">
-            <Input bind:value={password} type={showPassword ? 'text' : 'password'} disabled={submitting} />
+            <Input id="wifi-password" bind:value={password} type={showPassword ? 'text' : 'password'} autocomplete="off" autocapitalize="none" spellcheck={false} disabled={submitting} />
             <Button
               variant="secondary"
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              aria-controls="wifi-password"
+              aria-pressed={showPassword}
               onclick={() => (showPassword = !showPassword)}
               disabled={submitting}
             >
@@ -172,7 +175,7 @@
               {showPassword ? 'Hide' : 'Show'}
             </Button>
           </div>
-        </label>
+        </div>
       {/if}
     </Card>
   {:else}
@@ -199,12 +202,15 @@
         Identity
         <Input bind:value={eapLogin} placeholder="user@example.com" disabled={submitting} />
       </label>
-      <label class="space-y-2 text-sm font-medium">
-        Password
+      <div class="space-y-2">
+        <label for="enterprise-password" class="block text-sm font-medium">Password</label>
         <div class="flex items-center gap-2">
-          <Input bind:value={eapPassword} type={showEapPassword ? 'text' : 'password'} disabled={submitting} />
+          <Input id="enterprise-password" bind:value={eapPassword} type={showEapPassword ? 'text' : 'password'} autocomplete="off" autocapitalize="none" spellcheck={false} disabled={submitting} />
           <Button
             variant="secondary"
+            aria-label={showEapPassword ? 'Hide password' : 'Show password'}
+            aria-controls="enterprise-password"
+            aria-pressed={showEapPassword}
             onclick={() => (showEapPassword = !showEapPassword)}
             disabled={submitting}
           >
@@ -214,7 +220,7 @@
             {showEapPassword ? 'Hide' : 'Show'}
           </Button>
         </div>
-      </label>
+      </div>
     </Card>
   {/if}
 
@@ -259,16 +265,16 @@
     <Alert tone="info">Submitting connection test… keep this tab open.</Alert>
   {/if}
 
-  <div class="flex items-center gap-3">
+  <div class="flex items-center justify-between gap-3">
+    <Button variant="secondary" onclick={() => goto('/')}>
+      <span class="mr-2 inline-flex items-center"><Icon name="back" /></span>
+      Cancel
+    </Button>
     <Button onclick={startTest} loading={submitting}>
       {#if !submitting}
         <span class="mr-2 inline-flex items-center"><Icon name="check" /></span>
       {/if}
       {submitting ? 'Starting test…' : 'Test connection'}
-    </Button>
-    <Button variant="secondary" onclick={() => goto('/')}>
-      <span class="mr-2 inline-flex items-center"><Icon name="back" /></span>
-      Cancel
     </Button>
   </div>
 </div>

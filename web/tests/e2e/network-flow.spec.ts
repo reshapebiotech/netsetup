@@ -32,7 +32,7 @@ test('wifi testing reconnects, shows checks, and confirms save', async ({ page }
 
   await page.goto('/setup/new/wifi');
   await page.getByRole('combobox', { name: 'SSID', exact: true }).selectOption('LabWiFi');
-  await page.getByLabel('Password').fill('password');
+  await page.getByLabel('Password', { exact: true }).fill('password');
   await page.getByRole('button', { name: 'Test connection' }).click();
   await expect(page.getByText('Reconnecting to your device…', { exact: true })).toBeVisible();
   await expect(page.getByText('Connected and ready', { exact: true })).toBeVisible();
@@ -97,7 +97,7 @@ test('open Wi-Fi submits without credentials and preserves limited connectivity 
   });
   await page.goto('/setup/new/wifi');
   await expect(page.getByRole('combobox', { name: 'SSID', exact: true })).toHaveValue('OpenLab');
-  await expect(page.getByLabel('Password')).toHaveCount(0);
+  await expect(page.getByLabel('Password', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Test connection', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Save anyway', exact: true })).toBeVisible();
   expect(submitted).not.toHaveProperty('password');
@@ -127,4 +127,36 @@ test('manual IPv4 preserves zero and rejects empty or fractional prefixes', asyn
     await expect(page.getByText('IPv4 prefix must be an integer between 0 and 32', { exact: true })).toBeVisible();
     expect(submissions).toHaveLength(1);
   }
+});
+
+test('password reveal preserves the field and allows focus to leave', async ({ page }) => {
+  await page.clock.install();
+  let connectivityPolls = 0;
+  await page.route('**/api/network/connectivity', route => {
+    connectivityPolls++;
+    return route.fulfill({ json: { is_connected: true, can_reach_host: true } });
+  });
+  await page.route('**/api/network/wifi/scan', route => route.fulfill({
+    json: [{ ssid: 'LabWiFi', signal_strength: 80, security: 'WPA2' }]
+  }));
+  await page.goto('/setup/new/wifi');
+  await expect(page.getByText('Online', { exact: true })).toBeVisible();
+  const password = page.getByLabel('Password', { exact: true });
+  await password.fill('test-password');
+  await page.getByRole('button', { name: 'Show password', exact: true }).click();
+  await expect(password).toHaveAttribute('type', 'text');
+  await expect(password).toHaveValue('test-password');
+  await page.getByRole('button', { name: 'Hide password', exact: true }).click();
+  await expect(password).toHaveAttribute('type', 'password');
+  await expect(password).toHaveValue('test-password');
+  const dns = page.getByLabel('Custom DNS servers', { exact: false });
+  await dns.fill('1.1.1.1');
+  await expect(dns).toBeFocused();
+  await page.getByRole('heading', { name: 'IPv4 and DNS', exact: true }).click();
+  await page.clock.runFor(5_000);
+  await expect.poll(() => connectivityPolls).toBeGreaterThan(1);
+  await expect(password).not.toBeFocused();
+  await password.focus();
+  await password.press('Tab');
+  await expect(page.getByRole('button', { name: 'Show password', exact: true })).toBeFocused();
 });
