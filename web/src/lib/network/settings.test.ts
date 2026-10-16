@@ -64,6 +64,27 @@ describe('network settings payload', () => {
     expect(settings.password).toBeUndefined();
   });
 
+  it('builds enterprise ethernet payload', () => {
+    const settings = buildSettingsFromForm({
+      transport: 'ethernet',
+      ssid: '',
+      password: 'ignored',
+      enterprise: true,
+      eapLogin: ' user@example.com ',
+      eapPassword: 'secret',
+      ipMethod: 'auto',
+      ipv4Address: '',
+      ipv4Prefix: '24',
+      ipv4Gateway: '',
+      dnsRaw: ''
+    });
+
+    expect(settings.ssid).toBeUndefined();
+    expect(settings.eap_login).toBe('user@example.com');
+    expect(settings.eap_password).toBe('secret');
+    expect(settings.password).toBeUndefined();
+  });
+
   it('normalizes DNS input tokens', () => {
     expect(parseDnsInput('1.1.1.1, , 8.8.8.8,')).toEqual(['1.1.1.1', '8.8.8.8']);
   });

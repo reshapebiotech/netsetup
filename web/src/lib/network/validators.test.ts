@@ -14,14 +14,23 @@ describe('network validators', () => {
 
   it('requires enterprise credentials in enterprise mode', () => {
     const errors = validateSettings('wifi', { ssid: 'Corp' }, true);
-    expect(errors).toContain('Enterprise identity is required');
-    expect(errors).toContain('Enterprise password is required');
+    expect(errors).toContain('802.1X identity is required');
+    expect(errors).toContain('802.1X password is required');
   });
 
   it('accepts valid enterprise wifi settings', () => {
     const errors = validateSettings(
       'wifi',
       { ssid: 'Corp', eap_login: 'user@example.com', eap_password: 'secret' },
+      true
+    );
+    expect(errors).toEqual([]);
+  });
+
+  it('accepts valid enterprise ethernet settings', () => {
+    const errors = validateSettings(
+      'ethernet',
+      { eap_login: 'user@example.com', eap_password: 'secret' },
       true
     );
     expect(errors).toEqual([]);

@@ -1,4 +1,6 @@
-use crate::network::ap_supervisor::{ApSupervisorMachine, SupervisorAction, SupervisorInput};
+use crate::network::ap_supervisor::{
+    ApSupervisorMachine, DEFAULT_BOOT_GRACE, SupervisorAction, SupervisorInput,
+};
 use crate::network::types::{
     AccessPointControllerStatus, AccessPointPreferences, AccessPointStatus, ConnectionState,
     Connectivity, EthernetNetwork, IpMethod, NetworkMacAddresses, NetworkSettings,
@@ -84,7 +86,14 @@ impl NmcliNetworkController {
         probe_target_to_host(&raw).unwrap_or_else(|| "1.1.1.1".to_string())
     }
 
-    async fn run_supervisor_tick(&self) {
+    async fn run_supervisor_tick(&self) -> bool {
+        {
+            let state = self.ap_state.lock().await;
+            if state.machine.resolved() {
+                return true;
+            }
+        }
+
         let test_in_progress = {
             let tests = self.active_tests.lock().await;
             tests
@@ -97,6 +106,10 @@ impl NmcliNetworkController {
             state.save_in_progress
         };
 
+        let boot_grace_elapsed = read_device_uptime()
+            .await
+            .is_none_or(|elapsed| elapsed >= DEFAULT_BOOT_GRACE);
+
         let current_enabled = match self.is_hotspot_enabled().await {
             Ok(v) => v,
             Err(e) => {
@@ -105,12 +118,9 @@ impl NmcliNetworkController {
             }
         };
 
-        let mut ethernet_connected = false;
         let mut uplink_healthy = false;
 
         if !(test_in_progress || save_in_progress) {
-            ethernet_connected = self.ethernet_connected().await.unwrap_or(false);
-
             let connectivity = match self.current_connectivity().await {
                 Ok(value) => value,
                 Err(e) => {
@@ -129,9 +139,9 @@ impl NmcliNetworkController {
             state.machine.step(SupervisorInput {
                 test_in_progress,
                 save_in_progress,
-                ethernet_connected,
                 uplink_healthy,
                 hotspot_enabled: current_enabled,
+                boot_grace_elapsed,
             })
         };
 
@@ -140,9 +150,9 @@ impl NmcliNetworkController {
                 ?action,
                 test_in_progress,
                 save_in_progress,
-                ethernet_connected,
                 uplink_healthy,
                 hotspot_enabled = current_enabled,
+                boot_grace_elapsed,
                 persistent_enabled = decision.persistent_enabled,
                 reason = %decision.last_reason,
                 "AP supervisor issued action"
@@ -152,7 +162,6 @@ impl NmcliNetworkController {
                     self.start_hotspot(&self.hotspot_name, &self.hotspot_password)
                         .await
                 }
-                SupervisorAction::Disable => self.stop_hotspot(&self.hotspot_name).await,
             };
 
             if let Err(e) = result {
@@ -161,6 +170,8 @@ impl NmcliNetworkController {
                 state.machine.note_action_error(action, &e.to_string());
             }
         }
+
+        decision.resolved
     }
 
     async fn cleanup_hostname_ap_duplicates(&self) -> NetResult<()> {
@@ -228,6 +239,12 @@ impl NmcliNetworkController {
             warn!("Failed AP duplicate cleanup at startup: {e}");
         }
 
+        let boot_elapsed = read_device_uptime().await;
+        {
+            let mut state = self.ap_state.lock().await;
+            state.machine = ApSupervisorMachine::for_boot_elapsed(boot_elapsed, DEFAULT_BOOT_GRACE);
+        }
+
         let cloned = Self {
             active_tests: self.active_tests.clone(),
             ap_state: self.ap_state.clone(),
@@ -238,10 +255,14 @@ impl NmcliNetworkController {
         };
 
         tokio::spawn(async move {
-            cloned.run_supervisor_tick().await;
+            if cloned.run_supervisor_tick().await {
+                return;
+            }
             loop {
                 sleep(Duration::from_secs(8)).await;
-                cloned.run_supervisor_tick().await;
+                if cloned.run_supervisor_tick().await {
+                    return;
+                }
             }
         });
     }
@@ -268,26 +289,6 @@ impl NmcliNetworkController {
             &active_connections,
             &self.hotspot_name,
         ))
-    }
-
-    async fn ethernet_connected(&self) -> NetResult<bool> {
-        let output = Command::new("nmcli")
-            .args(["-t", "-f", "DEVICE,TYPE,STATE", "device", "status"])
-            .output()
-            .await
-            .map_err(|e| NetworkError::Internal(e.to_string()))?;
-
-        if !output.status.success() {
-            return Err(NetworkError::Internal(
-                String::from_utf8_lossy(&output.stderr).to_string(),
-            ));
-        }
-
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        Ok(stdout.lines().any(|line| {
-            let fields = parse_nmcli_terse_line(line);
-            fields.len() >= 3 && fields[1] == "ethernet" && fields[2] == "connected"
-        }))
     }
 
     async fn current_connectivity(&self) -> NetResult<Connectivity> {
@@ -363,6 +364,23 @@ impl NmcliNetworkController {
             managed: true,
         }))
     }
+
+    async fn stop_hotspot(&self, ssid: &str) -> NetResult<()> {
+        let output = Command::new("nmcli")
+            .args(["connection", "down", ssid])
+            .output()
+            .await
+            .map_err(|e| NetworkError::Internal(e.to_string()))?;
+
+        if !output.status.success() {
+            return Err(NetworkError::Internal(
+                String::from_utf8_lossy(&output.stderr).to_string(),
+            ));
+        }
+
+        info!("Stopped hotspot {ssid}");
+        Ok(())
+    }
 }
 
 fn parse_nmcli_terse_line(line: &str) -> Vec<String> {
@@ -398,6 +416,16 @@ fn stderr_indicates_missing_connection(stderr: &str) -> bool {
         || lower.contains("unknown")
         || lower.contains("no such connection profile")
         || lower.contains("no such connection")
+}
+
+async fn read_device_uptime() -> Option<Duration> {
+    let uptime = fs::read_to_string("/proc/uptime").await.ok()?;
+    let seconds = uptime.split_whitespace().next()?.parse::<f64>().ok()?;
+    if seconds.is_finite() && seconds >= 0.0 {
+        Some(Duration::from_secs_f64(seconds))
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]
@@ -517,10 +545,10 @@ fn build_nmcli_connection_args(
         if is_wifi {
             args.push("wifi-sec.key-mgmt".to_string());
             args.push("wpa-eap".to_string());
-        } else {
-            args.push("802-1x.eap".to_string());
-            args.push("peap".to_string());
         }
+
+        args.push("802-1x.eap".to_string());
+        args.push("peap".to_string());
         args.push("802-1x.identity".to_string());
         args.push(eap_login.clone());
 
@@ -529,12 +557,8 @@ fn build_nmcli_connection_args(
             args.push(eap_pwd.clone());
         }
 
-        if is_wifi {
-            args.push("802-1x.eap".to_string());
-            args.push("peap".to_string());
-            args.push("802-1x.phase2-auth".to_string());
-            args.push("mschapv2".to_string());
-        }
+        args.push("802-1x.phase2-auth".to_string());
+        args.push("mschapv2".to_string());
     } else if let Some(pwd) = &settings.password
         && is_wifi
     {
@@ -1052,23 +1076,6 @@ impl NetworkController for NmcliNetworkController {
         Ok(())
     }
 
-    async fn stop_hotspot(&self, ssid: &str) -> NetResult<()> {
-        let output = Command::new("nmcli")
-            .args(["connection", "down", ssid])
-            .output()
-            .await
-            .map_err(|e| NetworkError::Internal(e.to_string()))?;
-
-        if !output.status.success() {
-            return Err(NetworkError::Internal(
-                String::from_utf8_lossy(&output.stderr).to_string(),
-            ));
-        }
-
-        info!("Stopped hotspot {ssid}");
-        Ok(())
-    }
-
     async fn get_ap_controller_status(&self) -> NetResult<AccessPointControllerStatus> {
         self.ensure_supervisor_started().await;
         let test_in_progress = {
@@ -1111,8 +1118,12 @@ impl NetworkController for NmcliNetworkController {
                 .set_persistent_enabled(prefs.persistent_enabled);
         }
 
-        self.run_supervisor_tick().await;
-        Ok(())
+        if prefs.persistent_enabled {
+            self.start_hotspot(&self.hotspot_name, &self.hotspot_password)
+                .await
+        } else {
+            self.stop_hotspot(&self.hotspot_name).await
+        }
     }
 
     async fn start_ap_supervisor(&self) -> NetResult<()> {
@@ -1172,9 +1183,11 @@ impl NetworkController for NmcliNetworkController {
 
 #[cfg(test)]
 mod nmcli_unit_tests {
+    use crate::network::types::NetworkSettings;
+
     use super::{
-        hotspot_is_active_in_list, hotspot_state_is_enabled, probe_target_to_host,
-        stderr_indicates_missing_connection,
+        build_nmcli_connection_args, hotspot_is_active_in_list, hotspot_state_is_enabled,
+        probe_target_to_host, stderr_indicates_missing_connection,
     };
 
     #[test]
@@ -1219,5 +1232,32 @@ mod nmcli_unit_tests {
             Some("ris-api.reshapebiotech.com".to_string())
         );
         assert_eq!(probe_target_to_host(""), None);
+    }
+
+    #[test]
+    fn ethernet_enterprise_uses_peap_mschapv2() {
+        let args = build_nmcli_connection_args(
+            &NetworkSettings {
+                ssid: None,
+                password: None,
+                id: None,
+                eap_login: Some("user@example.com".into()),
+                eap_password: Some("secret".into()),
+                ipv4: None,
+            },
+            false,
+            "reshape-managed-ethernet",
+        );
+
+        assert!(args.windows(2).any(|w| w == ["802-1x.eap", "peap"]));
+        assert!(
+            args.windows(2)
+                .any(|w| w == ["802-1x.phase2-auth", "mschapv2"])
+        );
+        assert!(
+            args.windows(2)
+                .any(|w| w == ["802-1x.identity", "user@example.com"])
+        );
+        assert!(args.windows(2).any(|w| w == ["802-1x.password", "secret"]));
     }
 }

@@ -1,8 +1,8 @@
 import type {
   AccessPointControllerStatus,
+  AccessPointPreferences,
   BrandingConfig,
   NetworkMacAddresses,
-  AccessPointPreferences,
   ConnectionState,
   Connectivity,
   EthernetNetwork,

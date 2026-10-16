@@ -209,10 +209,6 @@ impl NetworkController for MockNetworkController {
         Ok(())
     }
 
-    async fn stop_hotspot(&self, _ssid: &str) -> NetResult<()> {
-        Ok(())
-    }
-
     async fn get_connectivity(&self) -> NetResult<Connectivity> {
         Ok(Connectivity {
             is_connected: true,
@@ -223,13 +219,13 @@ impl NetworkController for MockNetworkController {
     async fn get_ap_controller_status(&self) -> NetResult<AccessPointControllerStatus> {
         let prefs = self.ap_prefs.lock().await.clone();
         Ok(AccessPointControllerStatus {
+            automation_paused: false,
             is_enabled: prefs.persistent_enabled,
             persistent_enabled: prefs.persistent_enabled,
-            automation_paused: false,
             last_reason: if prefs.persistent_enabled {
-                "Persistent AP enabled".into()
+                "Persistent AP enabled by user".into()
             } else {
-                "Uplink healthy".into()
+                "Internet arrived during boot; leaving setup AP unchanged".into()
             },
         })
     }

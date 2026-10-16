@@ -27,12 +27,14 @@ export function buildSettingsFromForm(state: NetworkFormState): NetworkSettings 
 
   if (state.transport === 'wifi') {
     settings.ssid = state.ssid.trim();
-    if (state.enterprise) {
-      settings.eap_login = state.eapLogin.trim();
-      settings.eap_password = state.eapPassword;
-    } else {
+    if (!state.enterprise) {
       settings.password = state.password;
     }
+  }
+
+  if (state.enterprise) {
+    settings.eap_login = state.eapLogin.trim();
+    settings.eap_password = state.eapPassword;
   }
 
   if (state.ipMethod === 'manual') {

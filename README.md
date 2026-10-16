@@ -92,6 +92,7 @@ This repo includes production helpers for running as a captive portal service on
 ### What the rules do
 
 - Redirect DNS traffic from AP clients on `wlan0` to the app DNS port (`10053`)
+- Redirect HTTP traffic from AP clients on port `80` to the app port (`3000`)
 - Enable forwarding/NAT for AP clients
 - Automatically remove the rules when the service stops
 
@@ -112,6 +113,8 @@ The default unit uses:
 
 - `AP_IFACE=wlan0`
 - `DNS_PORT=10053`
+- `HTTP_PORT=80`
+- `APP_PORT=3000`
 - `CAPTIVE_IP=10.42.0.1`
 - `CONNECTIVITY_PROBE_TARGET=1.1.1.1` (host or URL used for internet reachability checks, e.g. `https://ris-api.reshapebiotech.com`)
 

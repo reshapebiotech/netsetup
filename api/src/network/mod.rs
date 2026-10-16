@@ -68,9 +68,6 @@ pub trait NetworkController: Send + Sync {
     /// Starts the local setup Hotspot
     async fn start_hotspot(&self, ssid: &str, password: &str) -> Result<()>;
 
-    /// Stops the local setup Hotspot
-    async fn stop_hotspot(&self, ssid: &str) -> Result<()>;
-
     /// Returns supervisor state for setup access point automation.
     async fn get_ap_controller_status(&self) -> Result<AccessPointControllerStatus>;
 

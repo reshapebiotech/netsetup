@@ -27,7 +27,7 @@
       const prefs = await networkApi.getApPreferences();
       apPersistent = prefs.persistent_enabled;
     } catch (e) {
-      apError = e instanceof Error ? e.message : 'Failed to load settings';
+      apError = e instanceof Error ? e.message : 'Failed to load setup Wi-Fi settings';
     } finally {
       apLoading = false;
     }
@@ -39,9 +39,9 @@
     apSavedMessage = '';
     try {
       await networkApi.setApPreferences({ persistent_enabled: apPersistent });
-      apSavedMessage = apPersistent ? 'Persistent setup Wi-Fi is now on.' : 'Persistent setup Wi-Fi is now off.';
+      apSavedMessage = apPersistent ? 'Setup Wi-Fi test mode is on.' : 'Setup Wi-Fi test mode is off.';
     } catch (e) {
-      apError = e instanceof Error ? e.message : 'Failed to save settings';
+      apError = e instanceof Error ? e.message : 'Failed to save setup Wi-Fi settings';
     } finally {
       apSaving = false;
     }
@@ -77,14 +77,14 @@
   <Card className="space-y-4">
     <h2 class="flex items-center gap-2 text-lg font-semibold">
       <Icon name="wifi" className="h-5 w-5 text-primary" />
-      Device behavior
+      Setup Wi-Fi test mode
     </h2>
     <p class="text-sm text-muted-foreground">
-      Keep setup Wi-Fi available while Ethernet is connected. This setting is temporary and resets after restart.
+      Keep the setup access point available until this mode is turned off.
     </p>
 
     {#if apLoading}
-      <Loading label="Loading settings…" />
+      <Loading label="Loading setup Wi-Fi settings…" />
     {/if}
 
     {#if apError}
@@ -97,7 +97,7 @@
 
     <div class="flex items-center justify-between gap-3 rounded-md border border-border bg-white p-3">
       <div class="space-y-1">
-        <p class="text-sm font-medium">Keep setup Wi-Fi available in Ethernet mode</p>
+        <p class="text-sm font-medium">Keep setup access point available</p>
         <p class="text-xs text-muted-foreground">
           Status: {apPersistent ? 'On' : 'Off'}
         </p>
@@ -106,9 +106,9 @@
         type="button"
         role="switch"
         aria-checked={apPersistent}
-        aria-label="Toggle persistent setup Wi-Fi"
+        aria-label="Toggle setup Wi-Fi test mode"
         disabled={apLoading || apSaving}
-        on:click={() => (apPersistent = !apPersistent)}
+        onclick={() => (apPersistent = !apPersistent)}
         class={`relative inline-flex h-7 w-12 items-center rounded-full transition ${
           apPersistent ? 'bg-primary' : 'bg-muted'
         } disabled:cursor-not-allowed disabled:opacity-60`}

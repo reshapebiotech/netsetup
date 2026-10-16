@@ -18,9 +18,9 @@ export function validateSettings(transport: Transport, input: NetworkSettings, e
     errors.push('SSID is required for Wi-Fi');
   }
 
-  if (transport === 'wifi' && enterprise) {
-    if (!input.eap_login?.trim()) errors.push('Enterprise identity is required');
-    if (!input.eap_password?.trim()) errors.push('Enterprise password is required');
+  if (enterprise) {
+    if (!input.eap_login?.trim()) errors.push('802.1X identity is required');
+    if (!input.eap_password?.trim()) errors.push('802.1X password is required');
   }
 
   if (transport === 'wifi' && !enterprise && !input.password?.trim()) {

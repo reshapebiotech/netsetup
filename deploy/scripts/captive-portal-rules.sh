@@ -5,6 +5,8 @@ ACTION="${1:-}"
 AP_IFACE="${AP_IFACE:-wlan0}"
 DNS_PORT="${DNS_PORT:-10053}"
 CAPTIVE_IP="${CAPTIVE_IP:-10.42.0.1}"
+HTTP_PORT="${HTTP_PORT:-80}"
+APP_PORT="${APP_PORT:-3000}"
 
 if [[ "${ACTION}" != "up" && "${ACTION}" != "down" ]]; then
   echo "usage: $0 up|down" >&2
@@ -34,6 +36,7 @@ del_rule() {
 if [[ "${ACTION}" == "up" ]]; then
   add_rule nat PREROUTING -i "${AP_IFACE}" -p udp --dport 53 -j REDIRECT --to-ports "${DNS_PORT}"
   add_rule nat PREROUTING -i "${AP_IFACE}" -p tcp --dport 53 -j REDIRECT --to-ports "${DNS_PORT}"
+  add_rule nat PREROUTING -i "${AP_IFACE}" -p tcp --dport "${HTTP_PORT}" -j REDIRECT --to-ports "${APP_PORT}"
 
   # Allow forwarding/NAT from AP clients to upstream interfaces.
   add_rule filter FORWARD -i "${AP_IFACE}" -j ACCEPT
@@ -42,6 +45,7 @@ if [[ "${ACTION}" == "up" ]]; then
 else
   del_rule nat PREROUTING -i "${AP_IFACE}" -p udp --dport 53 -j REDIRECT --to-ports "${DNS_PORT}"
   del_rule nat PREROUTING -i "${AP_IFACE}" -p tcp --dport 53 -j REDIRECT --to-ports "${DNS_PORT}"
+  del_rule nat PREROUTING -i "${AP_IFACE}" -p tcp --dport "${HTTP_PORT}" -j REDIRECT --to-ports "${APP_PORT}"
 
   del_rule filter FORWARD -i "${AP_IFACE}" -j ACCEPT
   del_rule filter FORWARD -o "${AP_IFACE}" -m state --state RELATED,ESTABLISHED -j ACCEPT

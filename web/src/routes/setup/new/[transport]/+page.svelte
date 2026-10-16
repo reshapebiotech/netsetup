@@ -151,31 +151,10 @@
 
       <label class="flex items-center gap-2 text-sm">
         <input type="checkbox" bind:checked={enterprise} class="rounded border-input" />
-        Enterprise Wi-Fi (PEAP)
+        Enterprise Wi-Fi (PEAP/MSCHAPv2)
       </label>
 
-      {#if enterprise}
-        <label class="space-y-2 text-sm font-medium">
-          Identity
-          <Input bind:value={eapLogin} placeholder="user@example.com" disabled={submitting} />
-        </label>
-        <label class="space-y-2 text-sm font-medium">
-          Enterprise password
-          <div class="flex items-center gap-2">
-            <Input bind:value={eapPassword} type={showEapPassword ? 'text' : 'password'} disabled={submitting} />
-            <Button
-              variant="secondary"
-              onclick={() => (showEapPassword = !showEapPassword)}
-              disabled={submitting}
-            >
-              <span class="mr-2 inline-flex items-center">
-                <Icon name={showEapPassword ? 'eye-off' : 'eye'} />
-              </span>
-              {showEapPassword ? 'Hide' : 'Show'}
-            </Button>
-          </div>
-        </label>
-      {:else}
+      {#if !enterprise}
         <label class="space-y-2 text-sm font-medium">
           Password
           <div class="flex items-center gap-2">
@@ -193,6 +172,47 @@
           </div>
         </label>
       {/if}
+    </Card>
+  {:else}
+    <Card className="space-y-3">
+      <h2 class="flex items-center gap-2 text-lg font-semibold">
+        <Icon name="ethernet" className="h-5 w-5 text-primary" />
+        Ethernet authentication
+      </h2>
+
+      <label class="flex items-center gap-2 text-sm">
+        <input type="checkbox" bind:checked={enterprise} class="rounded border-input" />
+        Wired 802.1X (PEAP/MSCHAPv2)
+      </label>
+    </Card>
+  {/if}
+
+  {#if enterprise}
+    <Card className="space-y-3">
+      <h2 class="flex items-center gap-2 text-lg font-semibold">
+        <Icon name="network" className="h-5 w-5 text-primary" />
+        802.1X credentials
+      </h2>
+      <label class="space-y-2 text-sm font-medium">
+        Identity
+        <Input bind:value={eapLogin} placeholder="user@example.com" disabled={submitting} />
+      </label>
+      <label class="space-y-2 text-sm font-medium">
+        Password
+        <div class="flex items-center gap-2">
+          <Input bind:value={eapPassword} type={showEapPassword ? 'text' : 'password'} disabled={submitting} />
+          <Button
+            variant="secondary"
+            onclick={() => (showEapPassword = !showEapPassword)}
+            disabled={submitting}
+          >
+            <span class="mr-2 inline-flex items-center">
+              <Icon name={showEapPassword ? 'eye-off' : 'eye'} />
+            </span>
+            {showEapPassword ? 'Hide' : 'Show'}
+          </Button>
+        </div>
+      </label>
     </Card>
   {/if}
 

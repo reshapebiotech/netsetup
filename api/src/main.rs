@@ -184,7 +184,7 @@ async fn main() {
     // Run our app with hyper, listening globally on port 3000
     let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
     let listener = TcpListener::bind(addr).await.unwrap();
-    info!("API Server Listening on {}", addr);
+    info!("API Server Listening on http://{}", addr);
 
     axum::serve(listener, app).await.unwrap();
 }
