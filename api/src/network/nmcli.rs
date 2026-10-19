@@ -617,6 +617,26 @@ fn validate_wifi_target(ssid: Option<&str>, hotspot_name: &str) -> NetResult<()>
     Ok(())
 }
 
+fn hotspot_security_args(password: &str) -> Vec<String> {
+    if password.is_empty() {
+        return Vec::new();
+    }
+    [
+        "wifi-sec.key-mgmt",
+        "wpa-psk",
+        "wifi-sec.proto",
+        "rsn",
+        "wifi-sec.pairwise",
+        "ccmp",
+        "wifi-sec.group",
+        "ccmp",
+        "wifi-sec.psk",
+        password,
+    ]
+    .map(str::to_owned)
+    .to_vec()
+}
+
 fn normalize_bssid(value: &str) -> Option<String> {
     let bytes: Vec<_> = value.split(':').collect();
     (bytes.len() == 6
@@ -1078,12 +1098,7 @@ impl NetworkController for NmcliNetworkController {
             "shared".to_string(),
         ];
 
-        if !password.is_empty() {
-            args.push("wifi-sec.key-mgmt".to_string());
-            args.push("wpa-psk".to_string());
-            args.push("wifi-sec.psk".to_string());
-            args.push(password.to_string());
-        }
+        args.extend(hotspot_security_args(password));
 
         let add_output = Command::new("nmcli")
             .args(args)
@@ -1229,6 +1244,21 @@ mod nmcli_unit_tests {
         build_nmcli_connection_args, hotspot_is_active_in_list, hotspot_state_is_enabled,
         probe_target_to_host, stderr_indicates_missing_connection,
     };
+
+    #[test]
+    fn protected_hotspots_reject_legacy_protocols_and_preserve_the_password() {
+        let args = super::hotspot_security_args("sticker+password");
+        let settings: std::collections::HashMap<_, _> = args
+            .chunks_exact(2)
+            .map(|pair| (pair[0].as_str(), pair[1].as_str()))
+            .collect();
+        assert_eq!(settings.get("wifi-sec.proto"), Some(&"rsn"));
+        assert_eq!(settings.get("wifi-sec.pairwise"), Some(&"ccmp"));
+        assert_eq!(settings.get("wifi-sec.group"), Some(&"ccmp"));
+        assert_eq!(settings.get("wifi-sec.key-mgmt"), Some(&"wpa-psk"));
+        assert_eq!(settings.get("wifi-sec.psk"), Some(&"sticker+password"));
+        assert!(super::hotspot_security_args("").is_empty());
+    }
 
     fn scan_line(bssid: &str, ssid: &str, signal: u8, security: &str) -> String {
         let escape = |value: &str| value.replace('\\', "\\\\").replace(':', "\\:");
