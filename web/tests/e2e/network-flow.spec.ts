@@ -55,7 +55,7 @@ test('wifi testing reconnects, shows checks, and confirms save', async ({ page }
   await page.getByRole('combobox', { name: 'SSID', exact: true }).selectOption('lab-wifi');
   await page.getByLabel('Password', { exact: true }).fill('password');
   await page.getByRole('button', { name: 'Test connection' }).click();
-  await expect(page.getByText('Reconnecting to your device…', { exact: true })).toBeVisible();
+  await expect(page.getByText('Waiting to reconnect to your device…', { exact: true })).toBeVisible();
   await expect(page.getByText('Full service connectivity', { exact: true })).toBeVisible();
   await expect(page.getByText('Internet access', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Save connection', exact: true }).click();
@@ -232,7 +232,8 @@ for (const [seconds, expected] of [[90, '90 seconds'], [120, '2 minutes']] as co
     await expect(page.getByText('The device creates its own Wi-Fi network', { exact: false })).toBeVisible();
     await page.locator('summary').filter({ hasText: 'I can’t find setup Wi-Fi' }).click();
     await expect(page.getByText(`saved networks have ${expected}`, { exact: false })).toBeVisible();
-    await expect(page.getByText('Losing internet later does not automatically open setup Wi-Fi.', { exact: false })).toBeVisible();
+    await expect(page.getByText('setup Wi-Fi also opens if all saved Wi-Fi and Ethernet profiles have been removed', { exact: false })).toBeVisible();
+    await expect(page.getByText('Losing internet later does not automatically open setup Wi-Fi while saved networks remain.', { exact: false })).toBeVisible();
   });
 }
 
@@ -404,6 +405,7 @@ for (const reducedMotion of ['reduce', 'no-preference'] as const) {
 
 
 test('handoff page loads before the Wi-Fi test can disconnect the browser', async ({ page }) => {
+  await page.route('**/api/network/access_point/controller', route => route.fulfill({ json: { ssid: 'Setup-Lab-0440' } }));
   let started = false;
   const lateScripts: string[] = [];
   await page.route('**/*', route => {
@@ -425,8 +427,11 @@ test('handoff page loads before the Wi-Fi test can disconnect the browser', asyn
   await page.getByLabel('Password', { exact: true }).fill('password');
   await page.getByRole('button', { name: 'Test connection', exact: true }).click();
   await expect(page).toHaveURL(/\/testing\/offline$/);
-  await expect(page.getByRole('heading', { name: 'Hold tight while we switch networks', exact: true })).toBeVisible();
-  await expect(page.getByText('Reconnecting to your device…', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Stay on setup Wi-Fi', exact: true })).toBeVisible();
+  await expect(page.getByText('Waiting to reconnect to your device…', { exact: true })).toBeVisible();
+  await expect(page.getByText('Setup-Lab-0440', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('If asked, choose to stay connected without internet.', { exact: true })).toBeVisible();
+  await expect(page.getByText('Wait for the test result before switching to your usual Wi-Fi.', { exact: true })).toBeVisible();
   expect(lateScripts).toEqual([]);
 });
 

@@ -26,6 +26,7 @@
   let wifiNetworks = $state<WifiNetwork[]>([]);
   let wifiLoading = $state(false);
   let wifiError = $state('');
+  let setupWifiName: string | undefined;
 
   let manualSsid = $state('');
   let selectedNetwork = $state<WifiNetwork | null>(null);
@@ -89,6 +90,9 @@
   }
 
   onMount(() => {
+    void networkApi.getApControllerStatus().then(status => {
+      if (typeof status.ssid === 'string' && status.ssid) setupWifiName = status.ssid;
+    }).catch(() => {});
     void initialize();
   });
 
@@ -159,7 +163,7 @@
         preloadCode('/setup/new/[transport]/save-handoff/[testId]')
       ]);
       const testId = await networkApi.startTest(transport, settings);
-      await goto(`/setup/new/${transport}/testing/${testId}`);
+      await goto(`/setup/new/${transport}/testing/${testId}`, { state: { setupWifiName } });
     } catch (e) {
       submitError = e instanceof Error ? e.message : 'Failed to start test';
     } finally {

@@ -23,15 +23,24 @@ includes the web interface.
 
 ## When does setup Wi-Fi appear?
 
-**Automatic AP startup only happens during device boot.**
+**At boot, setup Wi-Fi opens if the device cannot get online.**
 
 1. Existing networks get **90 seconds from boot** to provide internet access.
 2. If internet is detected during that window, the AP stays off.
 3. Otherwise, the device starts its setup AP after the window expires.
 
-**Losing internet later does not start the AP**, however long the outage lasts.
+After the boot window, setup Wi-Fi also opens if **no Wi-Fi client or Ethernet
+profiles remain in NetworkManager**, confirmed by two checks about eight seconds
+apart. The device's own AP profile does not count. Saved wired profiles count even
+when disconnected or waiting for DHCP; delete those too to fully clear setup.
+
+**Losing internet later does not start the AP while client profiles remain**,
+however long the outage lasts. Connection tests and saves pause AP automation.
+Within a service session, turning the AP off manually suppresses this fallback
+until client configuration is added and removed again.
 Restarting the service does not repeat the boot decision. Starting the service
-for the first time after the boot window has elapsed also skips automatic AP startup.
+for the first time after the boot window skips the boot check; the empty-profile
+fallback still applies.
 
 You can still enable the AP manually. Resetting network settings and restoring
 setup Wi-Fi after a connection test can also bring it back.

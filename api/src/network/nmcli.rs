@@ -37,6 +37,9 @@ const MANAGED_WIFI_PROFILE: &str = "reshape-managed-wifi";
 const MANAGED_ETH_PROFILE: &str = "reshape-managed-ethernet";
 
 async fn persist_boot_decision() {
+    if fs::try_exists(BOOT_DECISION_PATH).await.unwrap_or(false) {
+        return;
+    }
     if let Err(e) = async {
         fs::create_dir_all("/run/reshape-netsetup").await?;
         fs::write(BOOT_DECISION_PATH, b"resolved\n").await
@@ -172,17 +175,11 @@ impl NmcliNetworkController {
         probe_target_to_host(&raw).unwrap_or_else(|| "1.1.1.1".to_string())
     }
 
-    async fn run_supervisor_tick(&self) -> bool {
+    async fn run_supervisor_tick(&self) {
         let Ok(_guard) = self.mutation.try_lock() else {
-            return false;
+            return;
         };
-        {
-            let state = self.ap_state.lock().await;
-            if state.machine.resolved() {
-                persist_boot_decision().await;
-                return true;
-            }
-        }
+        let boot_resolved = self.ap_state.lock().await.machine.resolved();
 
         let test_in_progress = {
             let tests = self.active_tests.lock().await;
@@ -204,13 +201,33 @@ impl NmcliNetworkController {
             Ok(v) => v,
             Err(e) => {
                 warn!("AP supervisor could not determine hotspot state: {e}");
-                false
+                return;
             }
         };
 
+        let has_client_configuration = if !(test_in_progress || save_in_progress) {
+            match tokio::time::timeout(
+                Duration::from_secs(5),
+                super::availability::has_client_configuration(&super::transaction::SystemCommands),
+            )
+            .await
+            {
+                Ok(Ok(value)) => Some(value),
+                Ok(Err(error)) => {
+                    warn!("AP supervisor could not inspect saved profiles: {error}");
+                    None
+                }
+                Err(_) => {
+                    warn!("AP supervisor saved-profile check timed out");
+                    None
+                }
+            }
+        } else {
+            None
+        };
         let mut uplink_healthy = false;
 
-        if !(test_in_progress || save_in_progress) {
+        if !(boot_resolved || test_in_progress || save_in_progress) {
             let connectivity = match self.current_connectivity().await {
                 Ok(value) => value,
                 Err(e) => {
@@ -232,6 +249,7 @@ impl NmcliNetworkController {
                 uplink_healthy,
                 hotspot_enabled: current_enabled,
                 boot_grace_elapsed,
+                has_client_configuration,
             })
         };
 
@@ -248,7 +266,7 @@ impl NmcliNetworkController {
                 "AP supervisor issued action"
             );
             let result = match action {
-                SupervisorAction::Enable => {
+                SupervisorAction::Enable | SupervisorAction::EnableUnconfigured => {
                     self.start_hotspot(&self.hotspot_name, &self.hotspot_password)
                         .await
                 }
@@ -265,7 +283,6 @@ impl NmcliNetworkController {
         if resolved {
             persist_boot_decision().await;
         }
-        resolved
     }
 
     async fn cleanup_hostname_ap_duplicates(&self) -> NetResult<()> {
@@ -357,14 +374,9 @@ impl NmcliNetworkController {
         };
 
         tokio::spawn(async move {
-            if cloned.run_supervisor_tick().await {
-                return;
-            }
             loop {
+                cloned.run_supervisor_tick().await;
                 sleep(Duration::from_secs(8)).await;
-                if cloned.run_supervisor_tick().await {
-                    return;
-                }
             }
         });
     }

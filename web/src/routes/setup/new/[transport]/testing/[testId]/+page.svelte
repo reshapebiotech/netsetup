@@ -11,6 +11,7 @@
 
   const transport = $derived(page.params.transport === 'ethernet' ? 'ethernet' : 'wifi');
   const testId = $derived(page.params.testId ?? '');
+  const setupWifiName = $derived(page.state.setupWifiName ?? null);
   let waitingForApi = $state(false);
   let timedOut = $state(false);
   let cancelled = false;
@@ -43,26 +44,44 @@
 <div class="space-y-6">
   <header class="space-y-2">
     <p class="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">Testing connection</p>
-    <h1 class="flex items-center gap-2 text-3xl font-semibold">
-      <Icon name={transport === 'wifi' ? 'wifi' : 'ethernet'} className="h-6 w-6 text-primary" />
-      Hold tight while we switch networks
+    <h1 class="text-3xl font-semibold">
+      {transport === 'wifi' ? 'Stay on setup Wi-Fi' : 'Testing your Ethernet connection'}
     </h1>
   </header>
-  <Card className="space-y-4">
-    <p class="text-sm text-muted-foreground">
-      We will check the network, gateway, internet, and configured services, then restore your previous connection so you can review the results.
-    </p>
+  <Card className="space-y-5">
     {#if transport === 'wifi'}
-      <p class="text-sm text-muted-foreground">
-        Setup Wi-Fi may disappear for up to two minutes. Keep this tab open.
-        When it returns, reconnect to the same setup Wi-Fi if your phone or computer does not reconnect automatically.
-      </p>
+      <div class="flex items-start gap-3 rounded-lg border border-warning/30 bg-warning/8 p-4">
+        <Icon name="wifi" className="mt-1 h-6 w-6 text-warning" />
+        <div class="min-w-0 space-y-1">
+          <p class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Wi-Fi network to stay on</p>
+          <p class="break-words text-xl font-semibold"><bdi>{setupWifiName ?? 'The device’s setup Wi-Fi'}</bdi></p>
+        </div>
+      </div>
+      <ol class="space-y-4">
+        <li class="flex gap-3">
+          <span aria-hidden="true" class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold">1</span>
+          <div class="space-y-1">
+            <p class="font-semibold">Keep this page open.</p>
+            <p class="text-sm text-muted-foreground">Setup Wi-Fi may disappear for up to two minutes during the test.</p>
+          </div>
+        </li>
+        <li class="flex gap-3">
+          <span aria-hidden="true" class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold">2</span>
+          <div class="space-y-1">
+            <p class="font-semibold">If disconnected, rejoin {#if setupWifiName}<bdi class="break-words">{setupWifiName}</bdi>{:else}setup Wi-Fi{/if} in Wi-Fi settings.</p>
+            <p class="text-sm text-muted-foreground">If asked, choose to stay connected without internet.</p>
+          </div>
+        </li>
+      </ol>
+      <p class="border-t border-border pt-4 text-sm font-medium">Wait for the test result before switching to your usual Wi-Fi.</p>
+    {:else}
+      <p class="text-sm text-muted-foreground">Keep this page open. We’ll test the connection, restore your previous settings, and show the result.</p>
     {/if}
     {#if timedOut}
       <Alert tone="error">We could not retrieve the result. Reconnect to setup Wi-Fi and check again. If it does not return, reboot the device.</Alert>
       <Button onclick={() => goto(`/setup/new/${transport}/result/${testId}`)}>Check result</Button>
     {:else}
-      <Loading label={waitingForApi ? 'Reconnecting to your device…' : 'Testing and restoring your connection…'} />
+      <Loading label={waitingForApi ? 'Waiting to reconnect to your device…' : 'Testing and restoring your connection…'} />
     {/if}
   </Card>
 </div>

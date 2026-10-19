@@ -120,7 +120,8 @@
         {:else}
           <p>After the device boots, it gives saved networks a startup window to provide internet access. If none does, setup Wi-Fi opens.</p>
         {/if}
-        <p class="text-muted-foreground">Losing internet later does not automatically open setup Wi-Fi.</p>
+        <p>After startup, setup Wi-Fi also opens if all saved Wi-Fi and Ethernet profiles have been removed. The device’s own access point does not count. A saved Ethernet profile still counts while disconnected or waiting for DHCP.</p>
+        <p class="text-muted-foreground">Losing internet later does not automatically open setup Wi-Fi while saved networks remain. Connection tests and saves pause this check.</p>
         <p class="text-muted-foreground">If the device is already online, you can open this tool over its existing network. Setup Wi-Fi test mode in Settings keeps the access point available until you turn it off. It can run alongside Ethernet; testing another Wi-Fi network can still interrupt it.</p>
       </div>
     </details>
