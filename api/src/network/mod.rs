@@ -1,4 +1,5 @@
 mod ap_supervisor;
+mod diagnostics;
 pub mod mock;
 pub mod nmcli;
 mod profiles;

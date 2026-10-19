@@ -1,6 +1,6 @@
 import type { NetworkSettings, Transport } from '#lib/network/types.js';
 
-function isValidIpv4(value: string): boolean {
+export function isValidIpv4(value: string): boolean {
   const parts = value.split('.');
   if (parts.length !== 4) return false;
   return parts.every((part) => {

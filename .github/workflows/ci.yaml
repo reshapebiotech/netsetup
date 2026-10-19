@@ -37,7 +37,7 @@ jobs:
       - name: Install web deps
         run: cd web && bun install --frozen-lockfile
       - name: Install Playwright browser
-        run: cd web && bunx playwright install --with-deps chromium
+        run: cd web && bunx playwright install --with-deps chromium firefox webkit
       - name: E2E tests
         run: cd web && bun run test:e2e
 

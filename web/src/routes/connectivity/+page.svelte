@@ -13,6 +13,9 @@
   let checking = $state(false);
   let error = $state('');
   let checkedAt = $state<Date | null>(null);
+  const checkedTime = $derived(checkedAt
+    ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'long' }).format(checkedAt)
+    : null);
 
   async function check() {
     if (checking) return;
@@ -33,38 +36,62 @@
 
 <svelte:head><title>Connectivity · {device.hostname ?? 'Network setup'}</title></svelte:head>
 
-<main class="mx-auto max-w-2xl space-y-6">
+<main class="mx-auto max-w-2xl space-y-4">
   <header class="space-y-2">
-    <h1 class="text-3xl font-semibold tracking-tight">Connectivity</h1>
-    <p class="text-muted-foreground">Check whether this device can reach its router, the internet, and its configured services on its current Wi-Fi or Ethernet connection.</p>
-  </header>
-  <Card className="space-y-4">
     <div class="flex flex-wrap items-center justify-between gap-3">
-      <p class="text-sm text-muted-foreground">Your network settings stay as they are.</p>
+      <h1 class="text-3xl font-semibold tracking-tight">Connectivity</h1>
       <Button onclick={check} loading={checking}>{checking ? 'Checking…' : 'Check connectivity'}</Button>
     </div>
+    <p class="text-sm text-muted-foreground">Check your current connections without changing network settings.</p>
+    {#if checkedAt}<p class="text-xs text-muted-foreground">{device.hostname ?? 'Device'} · <time datetime={checkedAt.toISOString()}>{checkedTime}</time></p>{/if}
     {#if checking}
       <p role="status" class="text-sm text-muted-foreground">Checking active connections. This may take a minute.</p>
     {:else if error}
       <Alert tone="error">{error}</Alert>
-    {:else if results !== null}
-      <p class="text-xs text-muted-foreground">Checked at {checkedAt?.toLocaleTimeString()}</p>
-      {#if results.length === 0}
-        <Alert tone="info">No active Wi-Fi or Ethernet connection to check. The device’s setup Wi-Fi is only for configuration.</Alert>
-        <a href="/setup/new" class="inline-flex min-h-11 items-center font-medium text-primary hover:underline">Add a network →</a>
-      {/if}
+    {:else if results?.length === 0}
+      <Alert tone="info">No active Wi-Fi or Ethernet connection to check. The device’s setup Wi-Fi is only for configuration.</Alert>
+      <a href="/setup/new" class="inline-flex min-h-11 items-center font-medium text-primary hover:underline">Add a network →</a>
     {/if}
-  </Card>
+  </header>
   {#each results ?? [] as result (result.interface)}
     <Card className="space-y-4">
-      <h2 class="break-words text-lg font-semibold">{result.name}</h2>
+      <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <h2 class="break-words text-lg font-semibold">{result.name}</h2>
+        <p class="text-xs text-muted-foreground">{#if result.configuration}{result.configuration.transport === 'wifi' ? 'Wi-Fi' : 'Ethernet'} · {/if}<span class="font-mono">{result.interface}</span></p>
+      </div>
+      {#if result.configuration}
+        {@const config = result.configuration}
+        <section aria-label="Current network configuration" class="space-y-2">
+          <dl class="network-details">
+            {#if config.ssid !== null && config.ssid !== result.name}<div><dt>SSID</dt><dd>{config.ssid}</dd></div>{/if}
+            <div><dt>IP assignment</dt><dd>{config.ipv4_method === 'auto' ? 'Automatic (DHCP)' : config.ipv4_method === 'manual' ? 'Manual' : config.ipv4_method || 'Unknown'}</dd></div>
+            <div>
+              <dt>IPv4</dt>
+              <dd>{#each config.addresses as address (`${address.address}/${address.prefix}`)}<span class="block font-mono">{address.address}/{address.prefix}</span>{:else}Not assigned{/each}</dd>
+            </div>
+            <div><dt>Gateway</dt><dd class="font-mono">{config.gateway || 'Not configured'}</dd></div>
+            <div><dt>DNS servers</dt><dd class="font-mono">{config.dns.join(', ') || 'Not configured'}</dd></div>
+            <div><dt>MAC address</dt><dd class="font-mono">{config.mac_address || 'Unavailable'}</dd></div>
+          </dl>
+        </section>
+      {:else if result.configuration_error}
+        <Alert tone="warning">Network details unavailable: {result.configuration_error}</Alert>
+      {/if}
       {#if result.report}
-        <ConnectionReport report={result.report} />
+        <ConnectionReport report={result.report} compact />
       {:else}
-        <p class="text-sm text-muted-foreground">{result.interface}</p>
         <Alert tone="error">{result.error ?? 'Could not check this connection.'}</Alert>
       {/if}
     </Card>
   {/each}
   <a href="/help" class="inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline">Help understanding the results →</a>
 </main>
+
+
+<style>
+  .network-details { font-size: 0.875rem; }
+  .network-details > div { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 1rem; padding-block: 0.375rem; }
+  .network-details > div + div { border-top: 1px solid hsl(var(--border) / 0.6); }
+  .network-details dt { color: hsl(var(--muted-foreground)); }
+  .network-details dd { min-width: 0; overflow-wrap: anywhere; text-align: right; }
+</style>

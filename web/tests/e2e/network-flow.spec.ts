@@ -10,6 +10,11 @@ const groups = [
     { name: 'Updates', url: 'https://updates.example.com', description: 'Firmware downloads' }
   ] }
 ];
+const configuration = {
+  transport: 'wifi', ssid: 'Lab Wi-Fi', ipv4_method: 'auto',
+  addresses: [{ address: '192.168.11.0', prefix: 23 }, { address: '10.0.0.5', prefix: 32 }],
+  gateway: '192.168.10.1', dns: ['192.168.10.1', '1.1.1.1'], mac_address: '02:00:00:00:00:01'
+};
 const report = {
   interface: 'wlan0', address: '192.168.1.42', gateway_reachable: true,
   internet_verified: true,
@@ -33,7 +38,7 @@ test('wifi testing reconnects, shows checks, and confirms save', async ({ page }
       id: 'managed', transport: 'wifi', display_name: 'reshape-managed-wifi', managed: true
     }] : [] }));
   await page.route('**/api/network/wifi/scan', route =>
-    route.fulfill({ json: [{ ssid: 'LabWiFi', signal_strength: 80, security: 'WPA2' }] }));
+    route.fulfill({ json: [{ id: 'lab-wifi', bssids: ['02:00:00:00:01:01'], ssid: 'LabWiFi', signal_strength: 80, security: 'WPA2' }] }));
   await page.route('**/api/network/wifi/test', route =>
     route.fulfill({ status: 202, json: { test_id: 'abc-123' } }));
   let hits = 0;
@@ -47,7 +52,7 @@ test('wifi testing reconnects, shows checks, and confirms save', async ({ page }
   });
 
   await page.goto('/setup/new/wifi');
-  await page.getByRole('combobox', { name: 'SSID', exact: true }).selectOption('LabWiFi');
+  await page.getByRole('combobox', { name: 'SSID', exact: true }).selectOption('lab-wifi');
   await page.getByLabel('Password', { exact: true }).fill('password');
   await page.getByRole('button', { name: 'Test connection' }).click();
   await expect(page.getByText('Reconnecting to your device…', { exact: true })).toBeVisible();
@@ -55,6 +60,7 @@ test('wifi testing reconnects, shows checks, and confirms save', async ({ page }
   await expect(page.getByText('Internet access', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Save connection', exact: true }).click();
   await expect(page.getByText('Connection saved. Full service connectivity.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Open device', exact: true })).toHaveAttribute('href', 'http://192.168.1.42:3000/setup/new/wifi/save-handoff/abc-123');
   await page.getByRole('button', { name: 'Return home' }).click();
   await expect(page.getByText('reshape-managed-wifi', { exact: true })).toBeVisible();
 });
@@ -91,6 +97,8 @@ test('a lost save response does not imply success', async ({ page }) => {
   await page.goto('/setup/new/wifi/save-handoff/unknown');
   await expect(page.getByText('We could not confirm whether saving completed.', { exact: false })).toBeVisible();
   await expect(page.getByText('Connection saved. Full service connectivity.')).not.toBeVisible();
+  await expect(page.getByRole('link', { name: 'Open device', exact: true })).toHaveAttribute('href', 'http://192.168.1.42:3000/setup/new/wifi/save-handoff/unknown');
+  await expect(page.getByText('Saving has not been confirmed.', { exact: false })).toBeVisible();
 });
 
 test('open Wi-Fi submits without credentials and preserves limited connectivity after save', async ({ page }) => {
@@ -98,7 +106,7 @@ test('open Wi-Fi submits without credentials and preserves limited connectivity 
   let saved = false;
   let submitted: Record<string, unknown> | null = null;
   await page.route('**/api/network/wifi/scan', route => route.fulfill({
-    json: [{ ssid: 'OpenLab', signal_strength: 80, security: '--' }]
+    json: [{ id: 'open-lab', bssids: ['02:00:00:00:02:01'], ssid: 'OpenLab', signal_strength: 80, security: '--' }]
   }));
   await page.route('**/api/network/wifi/test', route => {
     submitted = route.request().postDataJSON();
@@ -112,7 +120,7 @@ test('open Wi-Fi submits without credentials and preserves limited connectivity 
     return route.fulfill({ status: 202 });
   });
   await page.goto('/setup/new/wifi');
-  await expect(page.getByRole('combobox', { name: 'SSID', exact: true })).toHaveValue('OpenLab');
+  await page.getByRole('combobox', { name: 'SSID', exact: true }).selectOption('open-lab');
   await expect(page.getByLabel('Password', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Test connection', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Save anyway', exact: true })).toBeVisible();
@@ -178,7 +186,7 @@ test('invalid manual IPv4 combinations are blocked before a network test starts'
   expect(submissions).toBe(1);
 });
 
-test('password reveal preserves the field and allows focus to leave', async ({ page }) => {
+test('password reveal preserves the field and allows focus to leave', async ({ page, browserName }) => {
   await page.clock.install();
   let connectivityPolls = 0;
   await page.route('**/api/network/connectivity', route => {
@@ -186,7 +194,7 @@ test('password reveal preserves the field and allows focus to leave', async ({ p
     return route.fulfill({ json: { is_connected: true, can_reach_host: true } });
   });
   await page.route('**/api/network/wifi/scan', route => route.fulfill({
-    json: [{ ssid: 'LabWiFi', signal_strength: 80, security: 'WPA2' }]
+    json: [{ id: 'lab-wifi', bssids: ['02:00:00:00:01:01'], ssid: 'LabWiFi', signal_strength: 80, security: 'WPA2' }]
   }));
   await page.goto('/setup/new/wifi');
   await expect(page.getByText('Online', { exact: true })).toBeVisible();
@@ -203,10 +211,10 @@ test('password reveal preserves the field and allows focus to leave', async ({ p
   await expect(dns).toBeFocused();
   await page.getByRole('heading', { name: 'IPv4 and DNS', exact: true }).click();
   await page.clock.runFor(5_000);
-  await expect.poll(() => connectivityPolls).toBeGreaterThan(1);
+  expect(connectivityPolls).toBe(1);
   await expect(password).not.toBeFocused();
   await password.focus();
-  await password.press('Tab');
+  await password.press(browserName === 'webkit' ? 'Alt+Tab' : 'Tab');
   await expect(page.getByRole('button', { name: 'Show password', exact: true })).toBeFocused();
 });
 
@@ -267,7 +275,7 @@ test('header navigation and current connectivity checks do not change networks',
     if (route.request().method() !== 'GET') mutations.push(route.request().url());
     if (route.request().url().endsWith('/connectivity/check')) {
       checks++;
-      return route.fulfill({ json: checks === 1 ? [{ name: 'Lab Wi-Fi', interface: 'wlan0', report, error: null }] : [] });
+      return route.fulfill({ json: checks === 1 ? [{ name: 'Lab Wi-Fi', interface: 'wlan0', report, error: null, configuration, configuration_error: null }] : [] });
     }
     if (route.request().url().endsWith('/connectivity')) return route.fulfill({ json: { is_connected: true, can_reach_host: true } });
     return route.fulfill({ json: [] });
@@ -283,6 +291,16 @@ test('header navigation and current connectivity checks do not change networks',
   expect(checks).toBe(0);
   await page.getByRole('button', { name: 'Check connectivity' }).click();
   await expect(page.getByText('Full service connectivity', { exact: true })).toBeVisible();
+  const details = page.getByRole('region', { name: 'Current network configuration' });
+  await expect(details.getByText('192.168.11.0/23', { exact: true })).toBeVisible();
+  await expect(details.getByText('10.0.0.5/32', { exact: true })).toBeVisible();
+  await expect(details.getByText('Automatic (DHCP)', { exact: true })).toBeVisible();
+  await expect(details.getByText('02:00:00:00:00:01', { exact: true })).toBeVisible();
+  await expect(page.locator('time')).toHaveAttribute('datetime', /^\d{4}-\d{2}-\d{2}T/);
+  const serviceDetails = page.locator('details').filter({ has: page.getByText('Device API', { exact: true }) });
+  await expect(serviceDetails.getByText('https://api.example.com', { exact: true })).not.toBeVisible();
+  await serviceDetails.locator('summary').click();
+  await expect(serviceDetails.getByText('https://api.example.com', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Check connectivity' }).click();
   await expect(page.getByText('No active Wi-Fi or Ethernet connection to check.', { exact: false })).toBeVisible();
   await expect(page.getByText('Full service connectivity', { exact: true })).toHaveCount(0);
@@ -337,4 +355,183 @@ test('partial service results identify optional failures without blocking normal
   await expect(page.getByText('https://updates.example.com', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Save connection', exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+
+test('network details remain readable on a phone when connectivity probes fail', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.route('**/api/network/connectivity/check', route => route.fulfill({ json: [{
+    name: 'Lab Wi-Fi', interface: 'wlan0', report: null, error: 'No usable IPv4 address.',
+    configuration, configuration_error: null
+  }] }));
+  await page.goto('/connectivity');
+  await expect(page.getByText('Online', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Check connectivity', exact: true }).click();
+  await expect(page.getByText('No usable IPv4 address.', { exact: true })).toBeVisible();
+  const details = page.getByRole('region', { name: 'Current network configuration' });
+  await expect(details.getByText('192.168.11.0/23', { exact: true })).toBeVisible();
+  await expect(details.getByText('192.168.10.1, 1.1.1.1', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Lab Wi-Fi', exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+for (const reducedMotion of ['reduce', 'no-preference'] as const) {
+  test(`spinner rotates normally with motion preference: ${reducedMotion}`, async ({ page }) => {
+    await page.emulateMedia({ reducedMotion });
+    let finish!: () => void;
+    const gate = new Promise<void>(resolve => { finish = resolve; });
+    await page.route('**/api/network/connectivity/check', async route => {
+      await gate;
+      await route.fulfill({ json: [] });
+    });
+    try {
+      await page.goto('/connectivity');
+      await expect(page.getByText('Online', { exact: true })).toBeVisible();
+      await page.getByRole('button', { name: 'Check connectivity', exact: true }).click();
+      const spinner = page.getByRole('button', { name: 'Checking…', exact: true }).locator('.animate-spin');
+      await expect(spinner).toHaveCSS('animation-name', 'netsetup-spin');
+      await expect(spinner).toHaveCSS('animation-duration', '1s');
+      await expect(spinner).toHaveCSS('animation-iteration-count', 'infinite');
+      const initialTransform = await spinner.evaluate(element => getComputedStyle(element).transform);
+      await expect.poll(() => spinner.evaluate(element => getComputedStyle(element).transform))
+        .not.toBe(initialTransform);
+    } finally {
+      finish();
+    }
+    await expect(page.getByRole('button', { name: 'Check connectivity', exact: true })).toBeEnabled();
+  });
+}
+
+
+test('handoff page loads before the Wi-Fi test can disconnect the browser', async ({ page }) => {
+  let started = false;
+  const lateScripts: string[] = [];
+  await page.route('**/*', route => {
+    if (started && route.request().resourceType() === 'script') {
+      lateScripts.push(route.request().url());
+      return route.abort();
+    }
+    return route.fallback();
+  });
+  await page.route('**/api/network/wifi/scan', route => route.fulfill({ json: [{ id: 'lab-wifi', bssids: ['02:00:00:00:01:01'], ssid: 'LabWiFi', signal_strength: 80, security: 'WPA2' }] }));
+  await page.route('**/api/network/wifi/test', route => {
+    started = true;
+    return route.fulfill({ status: 202, json: { test_id: 'offline' } });
+  });
+  await page.route('**/api/network/status/offline', route => route.abort());
+  await page.goto('/setup/new/wifi');
+  await expect(page.getByText('Online', { exact: true })).toBeVisible();
+  await page.getByRole('combobox', { name: 'SSID', exact: true }).selectOption('lab-wifi');
+  await page.getByLabel('Password', { exact: true }).fill('password');
+  await page.getByRole('button', { name: 'Test connection', exact: true }).click();
+  await expect(page).toHaveURL(/\/testing\/offline$/);
+  await expect(page.getByRole('heading', { name: 'Hold tight while we switch networks', exact: true })).toBeVisible();
+  await expect(page.getByText('Reconnecting to your device…', { exact: true })).toBeVisible();
+  expect(lateScripts).toEqual([]);
+});
+
+test('DNS help does not activate its input or restart idle form focus', async ({ page }) => {
+  await page.clock.install();
+  let connectivityPolls = 0;
+  await page.route('**/api/network/connectivity', route => {
+    connectivityPolls++;
+    return route.fulfill({ json: { is_connected: true, can_reach_host: true } });
+  });
+  await page.goto('/setup/new/ethernet');
+  await expect(page.getByText('Online', { exact: true })).toBeVisible();
+  const dns = page.getByLabel('Custom DNS servers', { exact: false });
+  await dns.fill('1.1.1.1');
+  await dns.blur();
+  await page.getByText('Leave empty to use DNS servers provided by DHCP.', { exact: false }).click();
+  await page.clock.runFor(15_000);
+  await expect(dns).not.toBeFocused();
+  expect(connectivityPolls).toBe(1);
+  await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: 'Connectivity', exact: true }).click();
+  await page.clock.runFor(5_000);
+  await expect.poll(() => connectivityPolls).toBeGreaterThan(1);
+});
+
+
+test('opening the device address confirms a saved connection without saving again', async ({ page }) => {
+  let mutations = 0;
+  await page.route('**/api/network/tests/confirmed/save', route => {
+    mutations++;
+    return route.abort();
+  });
+  await page.route('**/api/network/status/confirmed', route => route.fulfill({ json: { status: 'Saved', detail: report } }));
+  await page.goto('/setup/new/wifi/save-handoff/confirmed');
+  await expect(page.getByText('Connection saved. Full service connectivity.', { exact: true })).toBeVisible();
+  expect(mutations).toBe(0);
+});
+
+
+test('SSID selection remains explicit and matches submissions across rescans', async ({ page }) => {
+  const company = ' Company Wi-Fi ';
+  let scans = 0;
+  const submissions: Array<{ ssid: string }> = [];
+  await page.route('**/api/network/wifi/scan', route => {
+    scans++;
+    const networks = scans === 1
+      ? [{ id: 'other-network', bssids: ['02:00:00:00:03:01'], ssid: 'Other network', signal_strength: 99, security: 'WPA2' }, { id: 'company-wifi', bssids: ['02:00:00:00:04:01'], ssid: company, signal_strength: 70, security: 'WPA2' }]
+      : scans === 2
+        ? [{ id: 'company-wifi', bssids: ['02:00:00:00:04:01'], ssid: company, signal_strength: 95, security: 'WPA2' }, { id: 'other-network', bssids: ['02:00:00:00:03:01'], ssid: 'Other network', signal_strength: 60, security: 'WPA2' }]
+        : [{ id: 'other-network', bssids: ['02:00:00:00:03:01'], ssid: 'Other network', signal_strength: 99, security: 'WPA2' }];
+    return route.fulfill({ json: networks });
+  });
+  await page.route('**/api/network/wifi/test', route => {
+    submissions.push(route.request().postDataJSON());
+    return route.fulfill({ status: 400, json: { error: 'Submission captured' } });
+  });
+  await page.goto('/setup/new/wifi');
+  await expect(page.getByText('Online', { exact: true })).toBeVisible();
+  const selector = page.getByRole('combobox', { name: 'SSID', exact: true });
+  await expect(selector).toBeEnabled();
+  await expect(selector).toHaveValue('');
+  await page.getByLabel('Password', { exact: true }).fill('password');
+  await page.getByRole('button', { name: 'Test connection', exact: true }).click();
+  await expect(page.getByText('SSID is required for Wi-Fi', { exact: true })).toBeVisible();
+  expect(submissions).toHaveLength(0);
+  await selector.selectOption('company-wifi');
+  for (const expectedScans of [2, 3]) {
+    await page.getByRole('button', { name: 'Rescan', exact: true }).click();
+    await expect.poll(() => scans).toBe(expectedScans);
+    await expect(selector).toBeEnabled();
+    await expect(selector).toHaveValue('company-wifi');
+    await expect(selector.locator('option:checked')).toContainText('Company Wi-Fi');
+    if (expectedScans === 3) await expect(selector.locator('option:checked')).toContainText('not seen in latest scan');
+    await page.getByRole('button', { name: 'Test connection', exact: true }).click();
+    await expect.poll(() => submissions.length).toBe(expectedScans - 1);
+    expect(submissions.at(-1)?.ssid).toBe(company);
+  }
+});
+
+
+test('SSID selection distinguishes security groups without pinning a radio', async ({ page }) => {
+  const networks = [
+    { id: 'shared-open', ssid: 'Shared Wi-Fi', signal_strength: 95, security: 'Open', bssids: ['02:00:00:00:01:01'] },
+    { id: 'shared-secured', ssid: 'Shared Wi-Fi', signal_strength: 70, security: 'WPA2', bssids: ['02:00:00:00:02:01', '02:00:00:00:02:02'] }
+  ];
+  const submissions: Array<{ssid: string; password?: string}> = [];
+  await page.route('**/api/network/wifi/scan', route => route.fulfill({ json: networks }));
+  await page.route('**/api/network/wifi/test', route => {
+    submissions.push(route.request().postDataJSON());
+    return route.fulfill({ status: 400, json: { error: 'Submission captured' } });
+  });
+  await page.goto('/setup/new/wifi');
+  await expect(page.getByText('Online', { exact: true })).toBeVisible();
+  const selector = page.getByRole('combobox', { name: 'SSID', exact: true });
+  await selector.selectOption('shared-secured');
+  await expect(selector.locator('option:checked')).toContainText('WPA2');
+  await page.getByLabel('Password', { exact: true }).fill('password');
+  await page.getByRole('button', { name: 'Test connection', exact: true }).click();
+  await expect.poll(() => submissions.length).toBe(1);
+  expect(submissions[0].ssid).toBe('Shared Wi-Fi');
+  expect(submissions[0].password).toBe('password');
+  expect(submissions[0]).not.toHaveProperty('bssid');
+  await selector.selectOption('shared-open');
+  await expect(page.getByLabel('Password', { exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Test connection', exact: true }).click();
+  await expect.poll(() => submissions.length).toBe(2);
+  expect(submissions[1].ssid).toBe('Shared Wi-Fi');
+  expect(submissions[1]).not.toHaveProperty('password');
 });

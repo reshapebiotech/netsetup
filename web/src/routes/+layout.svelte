@@ -22,6 +22,7 @@
   let { children }: { children: Snippet } = $props();
   let deviceStatus = $state<DeviceStatus>('checking');
   let lastUpdatedAt = $state<Date | null>(null);
+  const editingNetwork = $derived(/^\/setup\/new\/(wifi|ethernet)\/?$/.test(page.url.pathname));
 
   const statusText: Record<DeviceStatus, string> = {
     checking: 'Checking status…',
@@ -69,7 +70,7 @@
     }).catch(() => {});
     void refreshDeviceStatus();
     const timer = window.setInterval(() => {
-      void refreshDeviceStatus();
+      if (!editingNetwork) void refreshDeviceStatus();
     }, 5000);
     return () => window.clearInterval(timer);
   });

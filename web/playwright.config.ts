@@ -17,7 +17,16 @@ export default defineConfig({
   use: {
     baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:5173',
     trace: 'retain-on-failure',
-    headless: true,
-    launchOptions: configuredChromiumPath ? { executablePath: configuredChromiumPath } : undefined
-  }
+    headless: true
+  },
+  projects: [
+    { name: 'chromium', use: {
+      browserName: 'chromium',
+      launchOptions: configuredChromiumPath ? { executablePath: configuredChromiumPath } : undefined
+    } },
+    { name: 'firefox', grep: /spinner rotates normally|SSID selection/, use: { browserName: 'firefox' } },
+    { name: 'webkit', grep: /handoff page|DNS help|password reveal|spinner rotates normally|SSID selection/, use: {
+      browserName: 'webkit', viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true
+    } }
+  ]
 });

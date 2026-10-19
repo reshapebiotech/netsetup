@@ -8,7 +8,7 @@ use crate::network::types::{
 };
 use crate::network::{NetworkController, NetworkError, Result as NetResult};
 use async_trait::async_trait;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::fs;
@@ -65,6 +65,9 @@ impl NmcliNetworkController {
         mut settings: NetworkSettings,
         transport: NetworkTransport,
     ) -> NetResult<Uuid> {
+        if transport == NetworkTransport::Wifi {
+            validate_wifi_target(settings.ssid.as_deref(), &self.hotspot_name)?;
+        }
         self.ensure_supervisor_started().await;
         let guard = self.mutation.clone().try_lock_owned().map_err(|_| {
             NetworkError::ConnectionFailed("Another network operation is in progress".into())
@@ -78,12 +81,6 @@ impl NmcliNetworkController {
                 &mut settings,
             )
             .await?;
-        }
-        if transport == NetworkTransport::Wifi && settings.ssid.as_deref().is_none_or(str::is_empty)
-        {
-            return Err(NetworkError::ConnectionFailed(
-                "A Wi-Fi SSID is required".into(),
-            ));
         }
         let interface =
             super::transaction::select_interface(&super::transaction::SystemCommands, &transport)
@@ -596,30 +593,70 @@ async fn read_interface_mac(device: &str) -> Option<String> {
     }
 }
 
-pub fn parse_scan_output(stdout: &str) -> Vec<WifiNetwork> {
-    let mut networks = Vec::new();
+fn validate_wifi_target(ssid: Option<&str>, hotspot_name: &str) -> NetResult<()> {
+    let ssid = ssid
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| NetworkError::ConnectionFailed("A Wi-Fi SSID is required".into()))?;
+    if ssid == hotspot_name {
+        return Err(NetworkError::ConnectionFailed(
+            "Choose another network; the device cannot connect to its own setup Wi-Fi.".into(),
+        ));
+    }
+    Ok(())
+}
 
+fn normalize_bssid(value: &str) -> Option<String> {
+    let bytes: Vec<_> = value.split(':').collect();
+    (bytes.len() == 6
+        && bytes
+            .iter()
+            .all(|byte| byte.len() == 2 && u8::from_str_radix(byte, 16).is_ok()))
+    .then(|| value.to_ascii_uppercase())
+}
+
+pub fn parse_scan_output(
+    stdout: &str,
+    hotspot_name: &str,
+    own_bssid: Option<&str>,
+) -> Vec<WifiNetwork> {
+    let mut networks: Vec<WifiNetwork> = Vec::new();
+    let mut indices = HashMap::new();
     for line in stdout.lines() {
         let fields = parse_nmcli_terse_line(line);
-        if fields.len() >= 4 {
-            let ssid = fields[1].clone();
-            if ssid.is_empty() {
-                continue;
+        if fields.len() < 4 {
+            continue;
+        }
+        let Some(bssid) = normalize_bssid(&fields[0]) else {
+            continue;
+        };
+        let ssid = fields[1].clone();
+        if ssid.is_empty()
+            || ssid == hotspot_name
+            || own_bssid.is_some_and(|own| own.eq_ignore_ascii_case(&bssid))
+        {
+            continue;
+        }
+        let signal = fields[2].parse::<u8>().unwrap_or(0).min(100);
+        let network = WifiNetwork::new(ssid, signal, fields[3..].join(":"), vec![bssid.clone()]);
+        if let Some(&index) = indices.get(&network.id) {
+            let existing: &mut WifiNetwork = &mut networks[index];
+            existing.signal_strength = existing.signal_strength.max(signal);
+            if !existing.bssids.contains(&bssid) {
+                existing.bssids.push(bssid);
             }
-
-            let signal = fields[2].parse::<u8>().unwrap_or(0);
-            let security = fields[3..].join(":");
-            networks.push(WifiNetwork {
-                ssid,
-                signal_strength: signal,
-                security,
-            });
+        } else {
+            indices.insert(network.id.clone(), networks.len());
+            networks.push(network);
         }
     }
-
-    networks.sort_by_key(|a| std::cmp::Reverse(a.signal_strength));
-    let mut seen = HashSet::new();
-    networks.retain(|n| seen.insert(n.ssid.clone()));
+    for network in &mut networks {
+        network.bssids.sort();
+    }
+    networks.sort_by(|a, b| {
+        b.signal_strength
+            .cmp(&a.signal_strength)
+            .then_with(|| a.id.cmp(&b.id))
+    });
     networks
 }
 
@@ -753,7 +790,13 @@ impl NetworkController for NmcliNetworkController {
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        Ok(parse_scan_output(&stdout))
+        let interface = std::env::var("AP_IFACE").unwrap_or_else(|_| "wlan0".into());
+        let own_bssid = read_interface_mac(&interface).await;
+        Ok(parse_scan_output(
+            &stdout,
+            &self.hotspot_name,
+            own_bssid.as_deref(),
+        ))
     }
 
     async fn scan_ethernet(&self) -> NetResult<Vec<EthernetNetwork>> {
@@ -1174,6 +1217,64 @@ mod nmcli_unit_tests {
         build_nmcli_connection_args, hotspot_is_active_in_list, hotspot_state_is_enabled,
         probe_target_to_host, stderr_indicates_missing_connection,
     };
+
+    fn scan_line(bssid: &str, ssid: &str, signal: u8, security: &str) -> String {
+        let escape = |value: &str| value.replace('\\', "\\\\").replace(':', "\\:");
+        format!("{}:{}:{signal}:{security}\n", escape(bssid), escape(ssid))
+    }
+
+    #[test]
+    fn scan_results_exclude_own_bssid_and_configured_setup_ssid() {
+        let raw = scan_line("02:00:00:00:00:01", "Company Wi-Fi", 100, "WPA2")
+            + &scan_line("02:00:00:00:00:02", "RIS0440", 90, "WPA2")
+            + &scan_line("02:00:00:00:00:03", "Company Wi-Fi", 80, "WPA2");
+        let results = super::parse_scan_output(&raw, "RIS0440", Some("02:00:00:00:00:01"));
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].bssids, vec!["02:00:00:00:00:03"]);
+        assert_eq!(results[0].signal_strength, 80);
+        let custom = scan_line("02:00:00:00:00:01", "Setup:Lab", 100, "WPA2");
+        assert!(super::parse_scan_output(&custom, "Setup:Lab", None).is_empty());
+    }
+
+    #[test]
+    fn scan_groups_compatible_access_points_with_stable_ids() {
+        let raw = scan_line("02:00:00:00:00:01", " Company Wi-Fi ", 50, "WPA2 WPA3")
+            + &scan_line("02:00:00:00:00:02", " Company Wi-Fi ", 90, "WPA3 WPA2")
+            + &scan_line("02:00:00:00:00:03", " Company Wi-Fi ", 80, "--");
+        let networks = super::parse_scan_output(&raw, "RIS0440", None);
+        assert_eq!(networks.len(), 2);
+        assert_ne!(networks[0].id, networks[1].id);
+        assert_eq!(networks[0].ssid, " Company Wi-Fi ");
+        assert_eq!(networks[0].signal_strength, 90);
+        assert_eq!(
+            networks[0].bssids,
+            vec!["02:00:00:00:00:01", "02:00:00:00:00:02"]
+        );
+        let changed = scan_line("02:00:00:00:00:04", " Company Wi-Fi ", 60, "WPA2 WPA3");
+        let updated = super::parse_scan_output(&changed, "RIS0440", None);
+        assert_eq!(updated[0].id, networks[0].id);
+        let args = super::build_nmcli_connection_args(
+            &crate::network::types::NetworkSettings {
+                ssid: Some(networks[0].ssid.clone()),
+                password: Some("password".into()),
+                id: None,
+                eap_login: None,
+                eap_password: None,
+                ipv4: None,
+            },
+            true,
+            "pending",
+        );
+        assert!(!args.iter().any(|arg| arg.contains("bssid")));
+    }
+
+    #[test]
+    fn manually_entered_setup_ssid_is_rejected_before_network_changes() {
+        assert!(super::validate_wifi_target(Some("RIS0440"), "RIS0440").is_err());
+        assert!(super::validate_wifi_target(None, "RIS0440").is_err());
+        assert!(super::validate_wifi_target(Some(""), "RIS0440").is_err());
+        assert!(super::validate_wifi_target(Some("Company Wi-Fi"), "RIS0440").is_ok());
+    }
 
     #[test]
     fn hotspot_state_enabled_only_when_activated() {

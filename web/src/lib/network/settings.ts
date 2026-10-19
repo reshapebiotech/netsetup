@@ -27,7 +27,7 @@ export function buildSettingsFromForm(state: NetworkFormState): NetworkSettings 
   const dns = parseDnsInput(state.dnsRaw);
 
   if (state.transport === 'wifi') {
-    settings.ssid = state.ssid.trim();
+    settings.ssid = state.ssid;
     if (!state.enterprise && !state.openNetwork && state.password.length) {
       settings.password = state.password;
     }

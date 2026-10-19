@@ -110,3 +110,13 @@ function manualSettings(ipv4Prefix: string | number) {
     ipv4Address: '192.168.1.20', ipv4Gateway: '192.168.1.1', ipv4Prefix, dnsRaw: ''
   });
 }
+
+
+it('preserves the exact selected SSID, including surrounding spaces', () => {
+  const settings = buildSettingsFromForm({
+    transport: 'wifi', ssid: ' Company Wi-Fi ', password: 'password', enterprise: false,
+    eapLogin: '', eapPassword: '', ipMethod: 'auto', ipv4Address: '',
+    ipv4Prefix: '24', ipv4Gateway: '', dnsRaw: ''
+  });
+  expect(settings.ssid).toBe(' Company Wi-Fi ');
+});

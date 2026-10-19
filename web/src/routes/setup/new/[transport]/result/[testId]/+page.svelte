@@ -33,7 +33,9 @@
 
   async function save() {
     movingToSave = true;
-    await goto(`/setup/new/${transport}/save-handoff/${testId}`);
+    await goto(`/setup/new/${transport}/save-handoff/${testId}`, {
+      state: status?.status === 'Connected' ? { deviceAddress: status.detail.address } : {}
+    });
   }
 
   async function retry() {

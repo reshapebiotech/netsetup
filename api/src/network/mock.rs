@@ -149,26 +149,30 @@ impl MockNetworkController {
 impl NetworkController for MockNetworkController {
     async fn scan_wifi(&self) -> NetResult<Vec<WifiNetwork>> {
         Ok(vec![
-            WifiNetwork {
-                ssid: "Home_Network".into(),
-                signal_strength: 85,
-                security: "WPA2".into(),
-            },
-            WifiNetwork {
-                ssid: "CoffeeShop_Guest".into(),
-                signal_strength: 60,
-                security: "None".into(),
-            },
-            WifiNetwork {
-                ssid: "Neighbor_5G".into(),
-                signal_strength: 30,
-                security: "WPA3".into(),
-            },
-            WifiNetwork {
-                ssid: "Enterprise_Corp".into(),
-                signal_strength: 90,
-                security: "802-1x".into(),
-            },
+            WifiNetwork::new(
+                "Home_Network".into(),
+                85,
+                "WPA2".into(),
+                vec!["02:00:00:00:01:01".into()],
+            ),
+            WifiNetwork::new(
+                "CoffeeShop_Guest".into(),
+                60,
+                "Open".into(),
+                vec!["02:00:00:00:02:01".into()],
+            ),
+            WifiNetwork::new(
+                "Neighbor_5G".into(),
+                30,
+                "WPA3".into(),
+                vec!["02:00:00:00:03:01".into()],
+            ),
+            WifiNetwork::new(
+                "Enterprise_Corp".into(),
+                90,
+                "802.1X WPA2".into(),
+                vec!["02:00:00:00:04:01".into()],
+            ),
         ])
     }
 
@@ -303,6 +307,19 @@ impl NetworkController for MockNetworkController {
         Ok(vec![CurrentConnectionCheck {
             name: "Home_Network".into(),
             interface: "wlan0".into(),
+            configuration: Some(super::types::CurrentNetworkConfiguration {
+                transport: NetworkTransport::Wifi,
+                ssid: Some("Home_Network".into()),
+                ipv4_method: "auto".into(),
+                addresses: vec![super::types::Address {
+                    address: "192.168.1.42".into(),
+                    prefix: 24,
+                }],
+                gateway: Some("192.168.1.1".into()),
+                dns: vec!["192.168.1.1".into(), "1.1.1.1".into()],
+                mac_address: Some("02:00:00:00:00:01".into()),
+            }),
+            configuration_error: None,
             report: Some(ConnectivityReport {
                 interface: "wlan0".into(),
                 address: "192.168.1.42".into(),

@@ -8,6 +8,8 @@ export type ConnectionState =
   | { status: 'Failed'; detail: string };
 
 export interface WifiNetwork {
+  id: string;
+  bssids: string[];
   ssid: string;
   signal_strength: number;
   security: string;
@@ -94,11 +96,23 @@ export interface ConnectivityReport {
   endpoint_groups: EndpointGroupResult[];
 }
 
+export interface CurrentNetworkConfiguration {
+  transport: Transport;
+  ssid: string | null;
+  ipv4_method: string;
+  addresses: IpAddress[];
+  gateway: string | null;
+  dns: string[];
+  mac_address: string | null;
+}
+
 export interface CurrentConnectionCheck {
   name: string;
   interface: string;
   report: ConnectivityReport | null;
   error: string | null;
+  configuration: CurrentNetworkConfiguration | null;
+  configuration_error: string | null;
 }
 
 export interface SavedNetworkDetails {

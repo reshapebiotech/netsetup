@@ -273,7 +273,7 @@ pub(super) async fn check_current_connections(
         if fields.len() != 4 || fields[2].is_empty() || fields[2] == "--" {
             continue;
         }
-        match fields[1].as_str() {
+        let transport = match fields[1].as_str() {
             "802-11-wireless" => {
                 let mode = nmcli(
                     commands,
@@ -290,13 +290,27 @@ pub(super) async fn check_current_connections(
                 if mode.trim() == "ap" {
                     continue;
                 }
+                NetworkTransport::Wifi
             }
-            "802-3-ethernet" => {}
+            "802-3-ethernet" => NetworkTransport::Ethernet,
             _ => continue,
-        }
+        };
         checks.push(async move {
-            let result =
-                timeout(Duration::from_secs(45), probe(commands, &fields[2], groups)).await;
+            let (configuration, result) = tokio::join!(
+                timeout(
+                    Duration::from_secs(10),
+                    super::diagnostics::collect(commands, &fields[0], &fields[2], transport)
+                ),
+                timeout(Duration::from_secs(45), probe(commands, &fields[2], groups)),
+            );
+            let (configuration, configuration_error) = match configuration {
+                Ok(Ok(configuration)) => (Some(configuration), None),
+                Ok(Err(error)) => (None, Some(error.to_string())),
+                Err(_) => (
+                    None,
+                    Some("Reading the current network configuration timed out.".into()),
+                ),
+            };
             let (report, error) = match result {
                 Ok(Ok(report)) => (Some(report), None),
                 Ok(Err(error)) => (None, Some(error.to_string())),
@@ -310,6 +324,8 @@ pub(super) async fn check_current_connections(
                 interface: fields[2].clone(),
                 report,
                 error,
+                configuration,
+                configuration_error,
             }
         });
     }
@@ -693,15 +709,27 @@ mod tests {
         assert!(!calls.iter().any(|call| call.contains("connection delete")));
     }
 
-    struct ReadOnlyCommands;
+    #[derive(Default)]
+    struct ReadOnlyCommands {
+        fail_configuration: bool,
+        fail_probe: bool,
+    }
     #[async_trait]
     impl Commands for ReadOnlyCommands {
         async fn run(&self, program: &str, args: &[String]) -> Result<String> {
             let call = format!("{program} {}", args.join(" "));
             match call.as_str() {
                 "nmcli -t -f UUID,TYPE,DEVICE,NAME connection show --active" => Ok("ap-id:802-11-wireless:wlan0:Device AP\neth-id:802-3-ethernet:eth0:Wired\nloopback:loopback:lo:lo".into()),
+                "nmcli -g ipv4.method connection show uuid eth-id" => Ok("auto".into()),
+                "nmcli -t --escape no -f GENERAL.HWADDR,IP4.ADDRESS,IP4.GATEWAY,IP4.DNS device show eth0" => {
+                    if self.fail_configuration { return Err(failure("Configuration unavailable")); }
+                    Ok("GENERAL.HWADDR:02:00:00:00:00:01\nIP4.ADDRESS[1]:192.168.1.42/24\nIP4.GATEWAY:192.168.1.1\nIP4.DNS[1]:192.168.1.1".into())
+                },
                 "nmcli -g 802-11-wireless.mode connection show uuid ap-id" => Ok("ap".into()),
-                "nmcli -g IP4.ADDRESS device show eth0" => Ok("192.168.1.42/24".into()),
+                "nmcli -g IP4.ADDRESS device show eth0" => {
+                    if self.fail_probe { return Err(failure("Probe unavailable")); }
+                    Ok("192.168.1.42/24".into())
+                },
                 "nmcli -g IP4.GATEWAY device show eth0" => Ok("192.168.1.1".into()),
                 "nmcli -g IP4.DNS device show eth0" => Ok(String::new()),
                 "ping -I eth0 -c 1 -W 2 192.168.1.1" => Ok(String::new()),
@@ -712,7 +740,7 @@ mod tests {
 
     #[tokio::test]
     async fn current_checks_skip_access_points_and_never_modify_connections() {
-        let results = check_current_connections(&ReadOnlyCommands, &[])
+        let results = check_current_connections(&ReadOnlyCommands::default(), &[])
             .await
             .unwrap();
         assert_eq!(results.len(), 1);
@@ -720,6 +748,35 @@ mod tests {
         assert_eq!(report.interface, "eth0");
         assert_eq!(report.gateway_reachable, Some(true));
         assert!(!report.internet_verified);
+    }
+
+    #[tokio::test]
+    async fn network_details_remain_available_when_connectivity_checks_fail() {
+        let commands = ReadOnlyCommands {
+            fail_probe: true,
+            ..Default::default()
+        };
+        let results = check_current_connections(&commands, &[]).await.unwrap();
+        assert!(results[0].report.is_none());
+        assert!(results[0].error.is_some());
+        let config = results[0].configuration.as_ref().unwrap();
+        assert_eq!(config.ipv4_method, "auto");
+        assert_eq!(config.addresses[0].prefix, 24);
+        assert_eq!(config.gateway.as_deref(), Some("192.168.1.1"));
+        assert!(results[0].configuration_error.is_none());
+    }
+
+    #[tokio::test]
+    async fn configuration_failures_do_not_hide_connectivity_results() {
+        let commands = ReadOnlyCommands {
+            fail_configuration: true,
+            ..Default::default()
+        };
+        let results = check_current_connections(&commands, &[]).await.unwrap();
+        assert!(results[0].configuration.is_none());
+        assert!(results[0].configuration_error.is_some());
+        assert!(results[0].report.is_some());
+        assert!(results[0].error.is_none());
     }
 
     #[derive(Default)]

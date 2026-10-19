@@ -8,8 +8,12 @@
   import Loading from '#lib/components/ui/loading.svelte';
   import { networkApi } from '#lib/network/api.js';
   import { resultSummary } from '#lib/network/results.js';
+  import { deviceHandoffUrl } from '#lib/network/handoff.js';
 
   const testId = $derived(page.params.testId ?? '');
+  const transport = $derived(page.params.transport === 'ethernet' ? 'ethernet' : 'wifi');
+  let deviceAddress = $state<string | null>(null);
+  const deviceUrl = $derived(deviceHandoffUrl(deviceAddress, transport, testId));
   let status = $state<'saving' | 'saved' | 'unconfirmed' | 'error'>('saving');
   let message = $state('Applying and verifying your connection…');
   let cancelled = false;
@@ -21,6 +25,7 @@
         const current = await networkApi.getStatus(testId);
         if (cancelled) return;
         if (current.status === 'Saved') {
+          deviceAddress = current.detail.address;
           status = 'saved';
           message = `Connection saved. ${resultSummary(current.detail)}.`;
           return;
@@ -48,6 +53,7 @@
     try {
       const current = await networkApi.getStatus(testId);
       if (current.status === 'Connected') {
+        deviceAddress = current.detail.address;
         await networkApi.saveTest(testId);
       } else if (current.status === 'Failed') {
         status = 'error';
@@ -61,6 +67,7 @@
   }
 
   onMount(() => {
+    deviceAddress = page.state.deviceAddress ?? null;
     void saveNow();
     return () => { cancelled = true; };
   });
@@ -86,6 +93,14 @@
       <Button onclick={() => goto(`/setup/new/${page.params.transport}`)}>Configure again</Button>
     {:else}
       <Button onclick={() => goto('/')}>Return home</Button>
+    {/if}
+    {#if deviceUrl && status !== 'error'}
+      <div class="space-y-3 border-t border-border pt-4">
+        <p class="text-sm text-muted-foreground">Join the same network as the device, then open its network setup page.</p>
+        <p class="break-all font-mono text-sm">http://{deviceAddress}:3000/</p>
+        {#if status !== 'saved'}<p class="text-xs text-muted-foreground">This is the address from the connection test. Saving has not been confirmed.</p>{/if}
+        <a href={deviceUrl} class="inline-flex min-h-11 items-center rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground">Open device</a>
+      </div>
     {/if}
   </Card>
 </div>

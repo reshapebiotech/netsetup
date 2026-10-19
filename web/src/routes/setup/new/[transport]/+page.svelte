@@ -1,6 +1,6 @@
 <script lang="ts">
   import { page } from '$app/state';
-  import { goto } from '$app/navigation';
+  import { goto, preloadCode } from '$app/navigation';
   import Card from '#lib/components/ui/card.svelte';
   import Button from '#lib/components/ui/button.svelte';
   import Input from '#lib/components/ui/input.svelte';
@@ -27,10 +27,32 @@
   let wifiLoading = $state(false);
   let wifiError = $state('');
 
-  let ssid = $state('');
+  let manualSsid = $state('');
+  let selectedNetwork = $state<WifiNetwork | null>(null);
   let hiddenSsid = $state(false);
-  const openNetwork = $derived((original?.security === 'open' && ssid === original.settings.ssid) || (!hiddenSsid && wifiNetworks.some((network) =>
-    network.ssid === ssid && ['', '--', 'none'].includes(network.security.trim().toLowerCase()))));
+  const ssid = $derived(hiddenSsid ? manualSsid : selectedNetwork?.ssid ?? '');
+  const networkLabel = (network: WifiNetwork) => `${network.ssid} · ${network.security} · ${network.signal_strength}%`;
+  const wifiOptions = $derived([
+    { label: 'Choose a network…', value: '' },
+    ...wifiNetworks.map(network => ({ label: networkLabel(network), value: network.id })),
+    ...(selectedNetwork && !wifiNetworks.some(network => network.id === selectedNetwork?.id)
+      ? [{ label: `${networkLabel(selectedNetwork)} (not seen in latest scan)`, value: selectedNetwork.id }] : [])
+  ]);
+  const openNetwork = $derived(hiddenSsid
+    ? original?.security === 'open' && ssid === original.settings.ssid
+    : selectedNetwork !== null && ['', '--', 'none', 'open'].includes(selectedNetwork.security.trim().toLowerCase()));
+
+  function selectNetwork(id: string) {
+    const network = wifiNetworks.find(network => network.id === id)
+      ?? (selectedNetwork?.id === id ? selectedNetwork : null);
+    selectedNetwork = network;
+    if (network) enterprise = /802[.-]1x|eap/i.test(network.security);
+  }
+
+  function setManualEntry(enabled: boolean) {
+    if (enabled && !hiddenSsid) manualSsid = ssid;
+    hiddenSsid = enabled;
+  }
   let password = $state('');
   let showPassword = $state(false);
   let enterprise = $state(false);
@@ -59,7 +81,6 @@
     wifiError = '';
     try {
       wifiNetworks = await networkApi.scanWifi();
-      if (!ssid && wifiNetworks.length) ssid = wifiNetworks[0].ssid;
     } catch (e) {
       wifiError = e instanceof Error ? e.message : 'Failed to scan Wi-Fi';
     } finally {
@@ -79,7 +100,7 @@
           throw new Error(original.edit_unavailable ?? 'This network uses a different connection type.');
         }
         const saved = original.settings;
-        ssid = saved.ssid ?? '';
+        manualSsid = saved.ssid ?? '';
         enterprise = original.security === 'enterprise';
         eapLogin = saved.eap_login ?? '';
         ipMethod = saved.ipv4?.method ?? 'auto';
@@ -120,7 +141,7 @@
   }
 
   async function startTest() {
-    if (profileLoading || profileError) return;
+    if (submitting || profileLoading || profileError || wifiLoading) return;
     submitError = '';
     const settings = buildSettings();
     const errors = validateSettings(transport, settings, enterprise, !openNetwork, retainingPassword);
@@ -130,7 +151,13 @@
     }
 
     submitting = true;
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
     try {
+      await Promise.all([
+        preloadCode('/setup/new/[transport]/testing/[testId]'),
+        preloadCode('/setup/new/[transport]/result/[testId]'),
+        preloadCode('/setup/new/[transport]/save-handoff/[testId]')
+      ]);
       const testId = await networkApi.startTest(transport, settings);
       await goto(`/setup/new/${transport}/testing/${testId}`);
     } catch (e) {
@@ -184,28 +211,28 @@
       {/if}
 
       <label class="flex min-h-11 items-center gap-2 text-sm">
-        <input type="checkbox" bind:checked={hiddenSsid} class="rounded border-input" />
+        <input type="checkbox" bind:checked={() => hiddenSsid, setManualEntry} class="rounded border-input" />
         Enter network name manually
       </label>
 
       {#if hiddenSsid}
         <label class="block space-y-2 text-sm font-medium">
           SSID
-          <Input bind:value={ssid} placeholder="Enter network name" />
+          <Input bind:value={manualSsid} placeholder="Enter network name" />
         </label>
       {:else}
         <label class="block space-y-2 text-sm font-medium">
           SSID
           <Select
-            bind:value={ssid}
-            disabled={wifiLoading || wifiNetworks.length === 0}
-            options={wifiNetworks.map((n) => ({ label: `${n.ssid} (${n.signal_strength}%)`, value: n.ssid }))}
+            bind:value={() => selectedNetwork?.id ?? '', selectNetwork}
+            disabled={wifiLoading || (wifiNetworks.length === 0 && !selectedNetwork)}
+            options={wifiOptions}
           />
         </label>
       {/if}
 
       <label class="flex min-h-11 items-center gap-2 text-sm">
-        <input type="checkbox" bind:checked={enterprise} class="rounded border-input" />
+        <input type="checkbox" bind:checked={enterprise} disabled={!hiddenSsid && selectedNetwork !== null} class="rounded border-input" />
         Enterprise Wi-Fi (PEAP/MSCHAPv2)
       </label>
 
@@ -321,13 +348,13 @@
       </label>
     {/if}
 
-    <label class="block space-y-2 text-sm font-medium">
-      Custom DNS servers (comma separated)
-      <Input bind:value={dnsRaw} placeholder="1.1.1.1,8.8.8.8" disabled={submitting} />
-      <p class="text-xs font-normal text-muted-foreground">
+    <div class="space-y-2">
+      <label for="network-dns" class="block text-sm font-medium">Custom DNS servers (comma separated)</label>
+      <Input id="network-dns" aria-describedby="network-dns-help" bind:value={dnsRaw} placeholder="1.1.1.1,8.8.8.8" disabled={submitting} />
+      <p id="network-dns-help" class="text-xs text-muted-foreground">
         Leave empty to use DNS servers provided by DHCP. IPv4 addresses only.
       </p>
-    </label>
+    </div>
   </Card>
 
   {#if submitting}
@@ -339,7 +366,7 @@
       <span class="mr-2 inline-flex items-center"><Icon name="back" /></span>
       Cancel
     </Button>
-    <Button onclick={startTest} loading={submitting} disabled={profileLoading || !!profileError}>
+    <Button onclick={startTest} loading={submitting} disabled={profileLoading || !!profileError || wifiLoading}>
       {#if !submitting}
         <span class="mr-2 inline-flex items-center"><Icon name="check" /></span>
       {/if}

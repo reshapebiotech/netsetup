@@ -2,9 +2,46 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WifiNetwork {
+    pub id: String,
+    pub bssids: Vec<String>,
     pub ssid: String,
     pub signal_strength: u8, // 0-100
     pub security: String,    // e.g., "WPA2", "EAP", "None"
+}
+
+impl WifiNetwork {
+    pub fn new(ssid: String, signal_strength: u8, security: String, bssids: Vec<String>) -> Self {
+        let mut protocols: Vec<_> = security
+            .split_whitespace()
+            .map(str::to_ascii_uppercase)
+            .collect();
+        protocols.sort();
+        protocols.dedup();
+        let security = if protocols.is_empty()
+            || protocols == ["--"]
+            || protocols == ["NONE"]
+            || protocols == ["OPEN"]
+        {
+            "Open".to_owned()
+        } else {
+            protocols.join(" ")
+        };
+        let hex = |value: &str| {
+            value
+                .as_bytes()
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>()
+        };
+        let id = format!("wifi-{}-{}", hex(&ssid), hex(&security));
+        Self {
+            id,
+            ssid,
+            signal_strength,
+            security,
+            bssids,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -167,6 +204,19 @@ pub struct CurrentConnectionCheck {
     pub interface: String,
     pub report: Option<ConnectivityReport>,
     pub error: Option<String>,
+    pub configuration: Option<CurrentNetworkConfiguration>,
+    pub configuration_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CurrentNetworkConfiguration {
+    pub transport: NetworkTransport,
+    pub ssid: Option<String>,
+    pub ipv4_method: String,
+    pub addresses: Vec<Address>,
+    pub gateway: Option<String>,
+    pub dns: Vec<String>,
+    pub mac_address: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
