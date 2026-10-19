@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { validateSettings } from '#lib/network/validators.js';
+import ipv4Cases from '../../../../tests/ipv4-validation.json';
 
 describe('network validators', () => {
   it('requires wifi ssid', () => {
@@ -107,5 +108,16 @@ describe('network validators', () => {
       false
     );
     expect(errors).toEqual([]);
+  });
+});
+
+
+describe('manual IPv4 combinations', () => {
+  it.each(ipv4Cases)('$name', ({ address_data, gateway, error }) => {
+    const errors = validateSettings('ethernet', {
+      ipv4: { method: 'manual', address_data, gateway }
+    }, false);
+    if (error === null) expect(errors).toEqual([]);
+    else expect(errors).toContain(error);
   });
 });

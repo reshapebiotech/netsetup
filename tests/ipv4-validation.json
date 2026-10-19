@@ -1,0 +1,330 @@
+[
+  {
+    "name": "ordinary /24",
+    "address_data": [
+      {
+        "address": "192.168.1.20",
+        "prefix": 24
+      }
+    ],
+    "gateway": "192.168.1.1",
+    "error": null
+  },
+  {
+    "name": "gateway outside subnet",
+    "address_data": [
+      {
+        "address": "192.168.1.20",
+        "prefix": 24
+      }
+    ],
+    "gateway": "192.168.2.1",
+    "error": "Gateway must be in the same subnet as a manual IPv4 address"
+  },
+  {
+    "name": "gateway equals device",
+    "address_data": [
+      {
+        "address": "192.168.1.20",
+        "prefix": 24
+      }
+    ],
+    "gateway": "192.168.1.20",
+    "error": "Gateway must differ from the device IP address"
+  },
+  {
+    "name": "device network address",
+    "address_data": [
+      {
+        "address": "192.168.1.0",
+        "prefix": 24
+      }
+    ],
+    "gateway": "192.168.1.1",
+    "error": "Manual IPv4 address must not be the subnet's network or broadcast address"
+  },
+  {
+    "name": "device broadcast address",
+    "address_data": [
+      {
+        "address": "192.168.1.255",
+        "prefix": 24
+      }
+    ],
+    "gateway": "192.168.1.1",
+    "error": "Manual IPv4 address must not be the subnet's network or broadcast address"
+  },
+  {
+    "name": "gateway network address",
+    "address_data": [
+      {
+        "address": "192.168.1.20",
+        "prefix": 24
+      }
+    ],
+    "gateway": "192.168.1.0",
+    "error": "Gateway must not be the subnet's network or broadcast address"
+  },
+  {
+    "name": "gateway broadcast address",
+    "address_data": [
+      {
+        "address": "192.168.1.20",
+        "prefix": 24
+      }
+    ],
+    "gateway": "192.168.1.255",
+    "error": "Gateway must not be the subnet's network or broadcast address"
+  },
+  {
+    "name": "/23 spans octets",
+    "address_data": [
+      {
+        "address": "192.168.0.255",
+        "prefix": 23
+      }
+    ],
+    "gateway": "192.168.1.0",
+    "error": null
+  },
+  {
+    "name": "/23 broadcast",
+    "address_data": [
+      {
+        "address": "192.168.0.255",
+        "prefix": 23
+      }
+    ],
+    "gateway": "192.168.1.255",
+    "error": "Gateway must not be the subnet's network or broadcast address"
+  },
+  {
+    "name": "/23 outside subnet",
+    "address_data": [
+      {
+        "address": "192.168.0.255",
+        "prefix": 23
+      }
+    ],
+    "gateway": "192.168.2.1",
+    "error": "Gateway must be in the same subnet as a manual IPv4 address"
+  },
+  {
+    "name": "/30 usable pair",
+    "address_data": [
+      {
+        "address": "10.0.0.5",
+        "prefix": 30
+      }
+    ],
+    "gateway": "10.0.0.6",
+    "error": null
+  },
+  {
+    "name": "/30 network gateway",
+    "address_data": [
+      {
+        "address": "10.0.0.5",
+        "prefix": 30
+      }
+    ],
+    "gateway": "10.0.0.4",
+    "error": "Gateway must not be the subnet's network or broadcast address"
+  },
+  {
+    "name": "/30 broadcast device",
+    "address_data": [
+      {
+        "address": "10.0.0.7",
+        "prefix": 30
+      }
+    ],
+    "gateway": "10.0.0.6",
+    "error": "Manual IPv4 address must not be the subnet's network or broadcast address"
+  },
+  {
+    "name": "/31 lower host",
+    "address_data": [
+      {
+        "address": "10.0.0.4",
+        "prefix": 31
+      }
+    ],
+    "gateway": "10.0.0.5",
+    "error": null
+  },
+  {
+    "name": "/31 upper host",
+    "address_data": [
+      {
+        "address": "10.0.0.5",
+        "prefix": 31
+      }
+    ],
+    "gateway": "10.0.0.4",
+    "error": null
+  },
+  {
+    "name": "/31 outside pair",
+    "address_data": [
+      {
+        "address": "10.0.0.5",
+        "prefix": 31
+      }
+    ],
+    "gateway": "10.0.0.6",
+    "error": "Gateway must be in the same subnet as a manual IPv4 address"
+  },
+  {
+    "name": "/31 gateway equals device",
+    "address_data": [
+      {
+        "address": "10.0.0.5",
+        "prefix": 31
+      }
+    ],
+    "gateway": "10.0.0.5",
+    "error": "Gateway must differ from the device IP address"
+  },
+  {
+    "name": "/32 needs another connected subnet",
+    "address_data": [
+      {
+        "address": "10.0.0.5",
+        "prefix": 32
+      }
+    ],
+    "gateway": "10.0.0.1",
+    "error": "Gateway must be in the same subnet as a manual IPv4 address"
+  },
+  {
+    "name": "/32 gateway equals device",
+    "address_data": [
+      {
+        "address": "10.0.0.5",
+        "prefix": 32
+      }
+    ],
+    "gateway": "10.0.0.5",
+    "error": "Gateway must differ from the device IP address"
+  },
+  {
+    "name": "/0 mask",
+    "address_data": [
+      {
+        "address": "192.168.1.20",
+        "prefix": 0
+      }
+    ],
+    "gateway": "10.0.0.1",
+    "error": null
+  },
+  {
+    "name": "/0 network device",
+    "address_data": [
+      {
+        "address": "0.0.0.0",
+        "prefix": 0
+      }
+    ],
+    "gateway": "10.0.0.1",
+    "error": "Manual IPv4 address must not be the subnet's network or broadcast address"
+  },
+  {
+    "name": "/0 broadcast gateway",
+    "address_data": [
+      {
+        "address": "192.168.1.20",
+        "prefix": 0
+      }
+    ],
+    "gateway": "255.255.255.255",
+    "error": "Gateway must not be the subnet's network or broadcast address"
+  },
+  {
+    "name": "/1 high-bit mask",
+    "address_data": [
+      {
+        "address": "192.168.1.20",
+        "prefix": 1
+      }
+    ],
+    "gateway": "10.0.0.1",
+    "error": "Gateway must be in the same subnet as a manual IPv4 address"
+  },
+  {
+    "name": "gateway in second subnet",
+    "address_data": [
+      {
+        "address": "10.0.0.5",
+        "prefix": 24
+      },
+      {
+        "address": "192.168.1.20",
+        "prefix": 24
+      }
+    ],
+    "gateway": "192.168.1.1",
+    "error": null
+  },
+  {
+    "name": "gateway equals second device address",
+    "address_data": [
+      {
+        "address": "10.0.0.5",
+        "prefix": 24
+      },
+      {
+        "address": "192.168.1.20",
+        "prefix": 24
+      }
+    ],
+    "gateway": "192.168.1.20",
+    "error": "Gateway must differ from the device IP address"
+  },
+  {
+    "name": "second address is broadcast",
+    "address_data": [
+      {
+        "address": "10.0.0.5",
+        "prefix": 24
+      },
+      {
+        "address": "192.168.1.255",
+        "prefix": 24
+      }
+    ],
+    "gateway": "10.0.0.1",
+    "error": "Manual IPv4 address must not be the subnet's network or broadcast address"
+  },
+  {
+    "name": "gateway usable in an overlapping subnet",
+    "address_data": [
+      {
+        "address": "192.168.0.20",
+        "prefix": 24
+      },
+      {
+        "address": "192.168.1.20",
+        "prefix": 23
+      }
+    ],
+    "gateway": "192.168.0.255",
+    "error": null
+  },
+  {
+    "name": "/32 with another connected subnet",
+    "address_data": [
+      {
+        "address": "10.0.0.5",
+        "prefix": 32
+      },
+      {
+        "address": "192.168.1.20",
+        "prefix": 24
+      }
+    ],
+    "gateway": "192.168.1.1",
+    "error": null
+  }
+]

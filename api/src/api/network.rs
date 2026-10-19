@@ -108,6 +108,18 @@ pub struct ConnectResponse {
     pub test_id: Uuid,
 }
 
+fn ipv4_mask(prefix: u8) -> u32 {
+    u32::MAX.checked_shl(32 - u32::from(prefix)).unwrap_or(0)
+}
+
+fn is_subnet_endpoint(address: u32, prefix: u8) -> bool {
+    if prefix >= 31 {
+        return false;
+    }
+    let host = address & !ipv4_mask(prefix);
+    host == 0 || host == !ipv4_mask(prefix)
+}
+
 fn validate_network_settings(settings: &NetworkSettings) -> Result<(), NetworkError> {
     if let Some(ipv4) = &settings.ipv4 {
         if let Some(dns) = &ipv4.dns {
@@ -131,29 +143,62 @@ fn validate_network_settings(settings: &NetworkSettings) -> Result<(), NetworkEr
                 ));
             }
 
+            let mut parsed_addresses = Vec::with_capacity(addresses.len());
             for addr in addresses {
-                if addr.address.parse::<Ipv4Addr>().is_err() {
-                    return Err(NetworkError::ConnectionFailed(format!(
+                let address = addr.address.parse::<Ipv4Addr>().map_err(|_| {
+                    NetworkError::ConnectionFailed(format!(
                         "Invalid manual IPv4 address '{}'",
                         addr.address
-                    )));
-                }
+                    ))
+                })?;
                 if addr.prefix > 32 {
                     return Err(NetworkError::ConnectionFailed(format!(
                         "Invalid IPv4 prefix '{}': must be between 0 and 32",
                         addr.prefix
                     )));
                 }
+                let address = u32::from(address);
+                if is_subnet_endpoint(address, addr.prefix) {
+                    return Err(NetworkError::ConnectionFailed(
+                        "Manual IPv4 address must not be the subnet's network or broadcast address"
+                            .into(),
+                    ));
+                }
+                parsed_addresses.push((address, addr.prefix));
             }
 
             let gateway = ipv4.gateway.as_ref().ok_or_else(|| {
                 NetworkError::ConnectionFailed("Manual IPv4 gateway is required".into())
             })?;
-            if gateway.parse::<Ipv4Addr>().is_err() {
-                return Err(NetworkError::ConnectionFailed(format!(
-                    "Invalid IPv4 gateway '{}'",
-                    gateway
-                )));
+            let gateway = u32::from(gateway.parse::<Ipv4Addr>().map_err(|_| {
+                NetworkError::ConnectionFailed(format!("Invalid IPv4 gateway '{}'", gateway))
+            })?);
+            if parsed_addresses
+                .iter()
+                .any(|(address, _)| *address == gateway)
+            {
+                return Err(NetworkError::ConnectionFailed(
+                    "Gateway must differ from the device IP address".into(),
+                ));
+            }
+            let matching_subnets: Vec<_> = parsed_addresses
+                .iter()
+                .filter(|(address, prefix)| {
+                    address & ipv4_mask(*prefix) == gateway & ipv4_mask(*prefix)
+                })
+                .collect();
+            if matching_subnets.is_empty() {
+                return Err(NetworkError::ConnectionFailed(
+                    "Gateway must be in the same subnet as a manual IPv4 address".into(),
+                ));
+            }
+            if matching_subnets
+                .iter()
+                .all(|(_, prefix)| is_subnet_endpoint(gateway, *prefix))
+            {
+                return Err(NetworkError::ConnectionFailed(
+                    "Gateway must not be the subnet's network or broadcast address".into(),
+                ));
             }
         }
     }
@@ -459,6 +504,41 @@ mod tests {
                 .unwrap_or_default()
                 .contains("Invalid IPv4 prefix")
         );
+    }
+
+    #[tokio::test]
+    async fn manual_ipv4_combinations_are_validated_before_testing() {
+        let cases: Vec<serde_json::Value> =
+            serde_json::from_str(include_str!("../../../tests/ipv4-validation.json")).unwrap();
+        let server = get_test_server();
+        for case in cases {
+            let payload = json!({
+                "ssid": "LabWiFi",
+                "password": "password",
+                "ipv4": {
+                    "method": "manual",
+                    "address_data": case["address_data"],
+                    "gateway": case["gateway"],
+                },
+            });
+            let settings = serde_json::from_value(payload.clone()).unwrap();
+            let result = super::validate_network_settings(&settings);
+            if let Some(error) = case["error"].as_str() {
+                assert!(result.is_err(), "{}", case["name"]);
+                for endpoint in ["/wifi/test", "/ethernet/test"] {
+                    let response = server.post(endpoint).json(&payload).await;
+                    response.assert_status(axum::http::StatusCode::BAD_REQUEST);
+                    let body = response.json::<serde_json::Value>();
+                    assert!(
+                        body["error"].as_str().unwrap().contains(error),
+                        "{}: {body}",
+                        case["name"]
+                    );
+                }
+            } else {
+                assert!(result.is_ok(), "{}: {result:?}", case["name"]);
+            }
+        }
     }
 
     #[tokio::test]

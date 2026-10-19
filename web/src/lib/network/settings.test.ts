@@ -6,7 +6,8 @@ describe('network settings payload', () => {
   it.each(['0', '24', '32', 0, 24, 32])('preserves a valid /%s prefix', (prefix) => {
     const settings = manualSettings(prefix);
     expect(settings.ipv4?.address_data?.[0].prefix).toBe(Number(prefix));
-    expect(validateSettings('ethernet', settings, false)).toEqual([]);
+    expect(validateSettings('ethernet', settings, false))
+      .not.toContain('IPv4 prefix must be an integer between 0 and 32');
   });
 
   it.each(['', ' ', 'abc', '24junk', '24.5', '-1', '33', 'Infinity'])('rejects invalid prefix %j instead of substituting /24', (prefix) => {

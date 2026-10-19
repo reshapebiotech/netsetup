@@ -11,6 +11,20 @@ function isValidIpv4(value: string): boolean {
   });
 }
 
+function ipv4Number(value: string): number {
+  return value.split('.').reduce((address, octet) => address * 256 + Number(octet), 0);
+}
+
+function ipv4Mask(prefix: number): number {
+  return 2 ** 32 - 2 ** (32 - prefix);
+}
+
+function isSubnetEndpoint(address: number, prefix: number): boolean {
+  if (prefix >= 31) return false;
+  const host = (address & ~ipv4Mask(prefix)) >>> 0;
+  return host === 0 || host === 2 ** (32 - prefix) - 1;
+}
+
 export function validateSettings(transport: Transport, input: NetworkSettings, enterprise: boolean, requiresPassword = true, retainingPassword = false): string[] {
   const errors: string[] = [];
 
@@ -30,15 +44,37 @@ export function validateSettings(transport: Transport, input: NetworkSettings, e
   if (input.ipv4?.method === 'manual') {
     if (!input.ipv4.address_data?.length) errors.push('Manual IPv4 address is required');
     if (!input.ipv4.gateway?.trim()) errors.push('Gateway is required for manual IPv4');
-    const manual = input.ipv4.address_data?.[0];
-    if (manual) {
-      if (!isValidIpv4(manual.address)) errors.push('Manual IPv4 address must be a valid IPv4 value');
-      if (!Number.isInteger(manual.prefix) || manual.prefix < 0 || manual.prefix > 32) {
-        errors.push('IPv4 prefix must be an integer between 0 and 32');
+    const parsedAddresses: { address: number; prefix: number }[] = [];
+    for (const manual of input.ipv4.address_data ?? []) {
+      const validAddress = isValidIpv4(manual.address);
+      const validPrefix = Number.isInteger(manual.prefix) && manual.prefix >= 0 && manual.prefix <= 32;
+      if (!validAddress) errors.push('Manual IPv4 address must be a valid IPv4 value');
+      if (!validPrefix) errors.push('IPv4 prefix must be an integer between 0 and 32');
+      if (validAddress && validPrefix) {
+        const address = ipv4Number(manual.address);
+        if (isSubnetEndpoint(address, manual.prefix)) {
+          errors.push("Manual IPv4 address must not be the subnet's network or broadcast address");
+        }
+        parsedAddresses.push({ address, prefix: manual.prefix });
       }
     }
-    if (input.ipv4.gateway?.trim() && !isValidIpv4(input.ipv4.gateway.trim())) {
+    const gateway = input.ipv4.gateway ?? '';
+    if (gateway.trim() && !isValidIpv4(gateway)) {
       errors.push('Gateway must be a valid IPv4 value');
+    } else if (isValidIpv4(gateway) && parsedAddresses.length > 0) {
+      const address = ipv4Number(gateway);
+      if (parsedAddresses.some((manual) => manual.address === address)) {
+        errors.push('Gateway must differ from the device IP address');
+      } else {
+        const subnets = parsedAddresses.filter((manual) =>
+          (manual.address & ipv4Mask(manual.prefix)) === (address & ipv4Mask(manual.prefix))
+        );
+        if (subnets.length === 0) {
+          errors.push('Gateway must be in the same subnet as a manual IPv4 address');
+        } else if (subnets.every((manual) => isSubnetEndpoint(address, manual.prefix))) {
+          errors.push("Gateway must not be the subnet's network or broadcast address");
+        }
+      }
     }
   }
 

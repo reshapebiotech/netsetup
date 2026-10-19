@@ -145,6 +145,39 @@ test('manual IPv4 preserves zero and rejects empty or fractional prefixes', asyn
   }
 });
 
+test('invalid manual IPv4 combinations are blocked before a network test starts', async ({ page }) => {
+  let submissions = 0;
+  await page.route('**/api/network/ethernet/test', route => {
+    submissions++;
+    return route.fulfill({ status: 400, json: { error: 'Submission captured' } });
+  });
+  await page.goto('/setup/new/ethernet');
+  await expect(page.getByText('Online', { exact: true })).toBeVisible();
+  await page.getByRole('combobox', { name: 'IPv4 method' }).selectOption('manual');
+  const address = page.getByRole('textbox', { name: 'Address', exact: true });
+  const gateway = page.getByRole('textbox', { name: 'Gateway', exact: true });
+  const prefix = page.getByRole('spinbutton', { name: 'Prefix', exact: true });
+  await prefix.fill('24');
+  for (const [ip, gw, error] of [
+    ['192.168.1.20', '192.168.2.1', 'Gateway must be in the same subnet as a manual IPv4 address'],
+    ['192.168.1.20', '192.168.1.20', 'Gateway must differ from the device IP address'],
+    ['192.168.1.0', '192.168.1.1', "Manual IPv4 address must not be the subnet's network or broadcast address"],
+    ['192.168.1.20', '192.168.1.255', "Gateway must not be the subnet's network or broadcast address"]
+  ]) {
+    await address.fill(ip);
+    await gateway.fill(gw);
+    await page.getByRole('button', { name: 'Test connection', exact: true }).click();
+    await expect(page.getByText(error, { exact: true })).toBeVisible();
+    expect(submissions).toBe(0);
+  }
+  await prefix.fill('31');
+  await address.fill('10.0.0.4');
+  await gateway.fill('10.0.0.5');
+  await page.getByRole('button', { name: 'Test connection', exact: true }).click();
+  await expect(page.getByText('Submission captured', { exact: true })).toBeVisible();
+  expect(submissions).toBe(1);
+});
+
 test('password reveal preserves the field and allows focus to leave', async ({ page }) => {
   await page.clock.install();
   let connectivityPolls = 0;
