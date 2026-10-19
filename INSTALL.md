@@ -8,7 +8,7 @@ the device.
 Download a release on your workstation. Replace the example version as needed:
 
 ```fish
-set version v0.2.2
+set version v0.2.3
 set bundle reshape-netsetup-$version-linux-arm64
 set url https://github.com/reshapebiotech/netsetup/releases/download/$version
 curl --fail --location --remote-name "$url/$bundle.tar.gz"
@@ -20,7 +20,7 @@ scp "$bundle.tar.gz" pi@device.local:/tmp/
 On the Pi, extract that version and prepare its configuration:
 
 ```fish
-set version v0.2.2
+set version v0.2.3
 set bundle reshape-netsetup-$version-linux-arm64
 tar -xzf /tmp/$bundle.tar.gz -C /tmp
 cd /tmp/$bundle
@@ -100,7 +100,7 @@ produce prereleases.
 To produce the same bundle locally:
 
 ```fish
-set version v0.2.2
+set version v0.2.3
 env RESHAPE_NETSETUP_VERSION=$version just build-arm64
 ./deploy/scripts/package-release.sh $version
 ```
