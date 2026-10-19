@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
+  import PageActions from '#lib/components/ui/page-actions.svelte';
   import Card from '#lib/components/ui/card.svelte';
   import Button from '#lib/components/ui/button.svelte';
   import Alert from '#lib/components/ui/alert.svelte';
@@ -26,7 +27,7 @@
       const prefs = await networkApi.getApPreferences();
       apPersistent = prefs.persistent_enabled;
     } catch (e) {
-      apError = e instanceof Error ? e.message : 'Failed to load setup Wi-Fi settings';
+      apError = e instanceof Error ? e.message : 'Failed to load direct access settings';
     } finally {
       apLoading = false;
     }
@@ -38,9 +39,9 @@
     apSavedMessage = '';
     try {
       await networkApi.setApPreferences({ persistent_enabled: apPersistent });
-      apSavedMessage = apPersistent ? 'Setup Wi-Fi test mode is on.' : 'Setup Wi-Fi test mode is off.';
+      apSavedMessage = apPersistent ? 'Direct access is on.' : 'Direct access is off.';
     } catch (e) {
-      apError = e instanceof Error ? e.message : 'Failed to save setup Wi-Fi settings';
+      apError = e instanceof Error ? e.message : 'Failed to save direct access settings';
     } finally {
       apSaving = false;
     }
@@ -70,20 +71,20 @@
       <Icon name="settings" className="h-6 w-6 text-primary" />
       Settings
     </h1>
-    <p class="text-base text-muted-foreground">Device information and setup Wi-Fi preferences.</p>
+    <p class="text-base text-muted-foreground">Device information and netsetup preferences.</p>
   </header>
 
   <Card className="space-y-4">
     <h2 class="flex items-center gap-2 text-lg font-semibold">
       <Icon name="wifi" className="h-5 w-5 text-primary" />
-      Setup Wi-Fi test mode
+      Direct access
     </h2>
     <p class="text-sm text-muted-foreground">
-      Keep setup Wi-Fi available until this mode is turned off. It can run alongside an Ethernet connection, so you can configure the device while it stays online.
+      Keep the device’s own network available until this mode is turned off. It can run alongside an Ethernet connection, so you can configure the device while it stays online.
     </p>
 
     {#if apLoading}
-      <Loading label="Loading setup Wi-Fi settings…" />
+      <Loading label="Loading direct access settings…" />
     {/if}
 
     {#if apError}
@@ -94,11 +95,11 @@
       <Alert tone="info">{apSavedMessage}</Alert>
     {/if}
 
-    <p class="text-sm text-muted-foreground">Testing another Wi-Fi network can still temporarily interrupt the setup access point.</p>
+    <p class="text-sm text-muted-foreground">Testing another Wi-Fi network can still temporarily interrupt the device’s network.</p>
 
     <div class="flex items-center justify-between gap-3 rounded-md border border-border bg-card p-3">
       <div class="space-y-1">
-        <p class="text-sm font-medium">Keep setup access point available</p>
+        <p class="text-sm font-medium">Keep direct access available</p>
         <p class="text-xs text-muted-foreground">
           Status: {apPersistent ? 'On' : 'Off'}
         </p>
@@ -107,7 +108,7 @@
         type="button"
         role="switch"
         aria-checked={apPersistent}
-        aria-label="Toggle setup Wi-Fi test mode"
+        aria-label="Toggle direct access"
         disabled={apLoading || apSaving}
         onclick={() => (apPersistent = !apPersistent)}
         class="inline-flex h-11 w-14 shrink-0 items-center justify-center rounded-lg disabled:cursor-not-allowed disabled:opacity-60"
@@ -119,12 +120,7 @@
     </div>
 
     <div class="flex items-center gap-3">
-      <Button variant="secondary" onclick={saveApPreferences} loading={apSaving} disabled={apLoading}>
-        {#if !apSaving}
-          <span class="mr-2 inline-flex items-center"><Icon name="save" /></span>
-        {/if}
-        Save settings
-      </Button>
+
       <Button variant="secondary" onclick={loadApPreferences} loading={apLoading} disabled={apSaving}>
         {#if !apLoading}
           <span class="mr-2 inline-flex items-center"><Icon name="refresh" /></span>
@@ -181,10 +177,13 @@
     </div>
   </Card>
 
-  <div class="flex items-center gap-3">
-    <Button variant="secondary" onclick={() => goto('/')}>
-      <span class="mr-2 inline-flex items-center"><Icon name="back" /></span>
-      Back
-    </Button>
-  </div>
+  <PageActions>
+    {#snippet secondary()}<Button variant="secondary" disabled={apSaving} onclick={() => goto('/')}>Back</Button>{/snippet}
+    {#snippet primary()}
+      <Button onclick={saveApPreferences} loading={apSaving} disabled={apLoading}>
+        {#if !apSaving}<Icon name="save" />{/if}
+        Save settings
+      </Button>
+    {/snippet}
+  </PageActions>
 </div>

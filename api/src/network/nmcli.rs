@@ -611,7 +611,7 @@ fn validate_wifi_target(ssid: Option<&str>, hotspot_name: &str) -> NetResult<()>
         .ok_or_else(|| NetworkError::ConnectionFailed("A Wi-Fi SSID is required".into()))?;
     if ssid == hotspot_name {
         return Err(NetworkError::ConnectionFailed(
-            "Choose another network; the device cannot connect to its own setup Wi-Fi.".into(),
+            "Choose another network; the device cannot connect to its own access point.".into(),
         ));
     }
     Ok(())

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
+  import PageActions from '#lib/components/ui/page-actions.svelte';
   import Card from '#lib/components/ui/card.svelte';
   import Button from '#lib/components/ui/button.svelte';
   import Alert from '#lib/components/ui/alert.svelte';
@@ -14,6 +15,8 @@
   let error = $state('');
   let deletingId = $state('');
   let deleteError = $state('');
+  let deleteCandidate = $state<SavedNetwork | null>(null);
+  let deleteDialog: HTMLDialogElement;
   let hasInternet = $state(false);
   let connectivityKnown = $state(false);
   let resetLoading = $state(false);
@@ -49,11 +52,25 @@
     void loadConnectivityHint();
   }
 
-  async function deleteSaved(id: string) {
+  function requestDelete(entry: SavedNetwork) {
+    deleteCandidate = entry;
+    deleteError = '';
+    deleteDialog.showModal();
+  }
+
+  function closeDelete() {
+    deleteCandidate = null;
+    deleteError = '';
+  }
+
+  async function deleteSaved() {
+    if (!deleteCandidate || deletingId || resetLoading) return;
+    const id = deleteCandidate.id;
     deletingId = id;
     deleteError = '';
     try {
       await networkApi.forget(id);
+      deleteDialog.close();
       await loadSaved();
     } catch (e) {
       deleteError = e instanceof Error ? e.message : 'Failed to delete saved network';
@@ -116,8 +133,6 @@
       <Loading label="Loading configured network…" />
     {:else if error}
       <Alert tone="error">{error}</Alert>
-    {:else if deleteError}
-      <Alert tone="error">{deleteError}</Alert>
     {:else if resetMessageTone === 'error'}
       <Alert tone="error">{resetMessage}</Alert>
     {:else if resetMessageTone === 'info'}
@@ -146,7 +161,7 @@
               variant="destructive"
               loading={deletingId === entry.id}
               disabled={resetLoading || (!!deletingId && deletingId !== entry.id)}
-              onclick={() => deleteSaved(entry.id)}
+              onclick={() => requestDelete(entry)}
             >
               Delete
             </Button>
@@ -155,8 +170,8 @@
     {/if}
   </Card>
 
-  <div class="flex flex-wrap items-start justify-between gap-4">
-    <div>
+  <PageActions>
+    {#snippet secondary()}
       {#if resetConfirming}
         <div class="max-w-sm space-y-3">
           <p class="text-sm text-muted-foreground">This removes saved networks and may disconnect this device.</p>
@@ -166,12 +181,41 @@
           </div>
         </div>
       {:else}
-        <button class="min-h-11 rounded-md text-sm text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50" disabled={resetLoading} onclick={beginResetAll}>Reset all networks</button>
+        <button class="min-h-11 rounded-md text-sm text-muted-foreground transition-colors hover:text-destructive disabled:opacity-50" disabled={resetLoading || loading} onclick={beginResetAll}>Reset all networks</button>
       {/if}
-    </div>
-    <Button onclick={() => goto('/setup/new')} disabled={resetLoading}>
+    {/snippet}
+    {#snippet primary()}
+    <Button onclick={() => goto('/setup/new')} disabled={resetLoading || loading}>
       <span class="mr-2 inline-flex items-center"><Icon name="plus" /></span>
       Add new network
     </Button>
-  </div>
+    {/snippet}
+  </PageActions>
 </main>
+
+
+<dialog
+  bind:this={deleteDialog}
+  role="alertdialog"
+  aria-labelledby="delete-network-title"
+  aria-describedby="delete-network-name delete-network-description delete-network-warning"
+  onclose={closeDelete}
+  oncancel={(event) => { if (deletingId) event.preventDefault(); }}
+  class="m-auto w-[calc(100%_-_2rem)] max-w-md rounded-xl border border-border bg-card p-5 text-card-foreground shadow-2xl backdrop:bg-black/70 sm:p-6"
+>
+  <div class="space-y-5">
+    <div class="space-y-2">
+      <h2 id="delete-network-title" class="text-xl font-semibold">Delete connection?</h2>
+      <p id="delete-network-name" class="break-words font-medium"><bdi>{deleteCandidate?.display_name}</bdi></p>
+      <p id="delete-network-description" class="text-sm text-muted-foreground">This removes its saved network settings from the device.</p>
+    </div>
+    <div id="delete-network-warning">
+      <Alert tone="warning">If you’re using this network to reach the device, you may lose access to netsetup. To stay connected, join the device’s own network first.</Alert>
+    </div>
+    {#if deleteError}<Alert tone="error">{deleteError}</Alert>{/if}
+    <div class="flex flex-wrap justify-end gap-3">
+      <Button variant="secondary" disabled={!!deletingId} onclick={() => deleteDialog.close()}>Cancel</Button>
+      <Button variant="destructive" loading={!!deletingId} onclick={deleteSaved}>Delete connection</Button>
+    </div>
+  </div>
+</dialog>

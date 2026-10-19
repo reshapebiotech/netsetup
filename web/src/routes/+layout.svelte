@@ -77,7 +77,7 @@
 </script>
 
 <svelte:head>
-  <title>{device.hostname ?? 'Network setup'}</title>
+  <title>netsetup{device.hostname ? ` • ${device.hostname}` : ''}</title>
   <link rel="icon" href={$branding.favicon_path} />
 </svelte:head>
 
@@ -90,7 +90,8 @@
           <img src={$branding.logo_path} alt="Reshape" class="brand-logo" />
         </a>
         <div class="device-identity">
-          <span class="device-caption">Network setup</span>
+          <span class="app-name">netsetup</span>
+          <span class="identity-separator" aria-hidden="true">•</span>
           <span class="device-name"><bdi>{device.hostname ?? 'Connecting…'}</bdi></span>
         </div>
       </div>
@@ -123,8 +124,9 @@
   .device-brand { display: flex; align-items: center; min-width: 0; gap: 1.5rem; }
   .brand-link { flex-shrink: 0; padding-block: 0.5rem; }
   .brand-logo { display: block; width: 8rem; height: auto; }
-  .device-identity { display: grid; gap: 0.25rem; min-width: 0; padding-left: 1.5rem; border-left: 1px solid hsl(var(--border)); }
-  .device-caption { font-size: 0.75rem; color: hsl(var(--muted-foreground)); }
+  .device-identity { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0.5rem; min-width: 0; padding-left: 1.5rem; border-left: 1px solid hsl(var(--border)); }
+  .app-name { font-size: 0.875rem; font-weight: 600; }
+  .identity-separator { color: hsl(var(--muted-foreground)); }
   .device-name { font-size: 0.875rem; font-weight: 500; overflow-wrap: anywhere; }
   .device-status { flex-shrink: 0; text-align: right; }
   .status-label { display: flex; justify-content: flex-end; align-items: center; gap: 0.5rem; font-size: 0.8125rem; font-weight: 500; }
@@ -133,7 +135,7 @@
   .main-nav a { display: flex; align-items: center; min-height: 3rem; padding: 0.5rem 0; border-bottom: 2px solid transparent; margin-bottom: -1px; color: hsl(var(--muted-foreground)); font-size: 0.875rem; font-weight: 500; transition: color 150ms; }
   .main-nav a:hover { color: hsl(var(--foreground)); }
   .main-nav a[aria-current="page"] { border-color: hsl(var(--primary)); color: hsl(var(--foreground)); }
-  .page-content { padding-block: 2.75rem 4rem; }
+  .page-content { padding-block: 2.75rem calc(4rem + var(--netsetup-actions-height, 0px)); }
   .page-content:focus { outline: none; }
   .skip-link { position: fixed; top: 0.5rem; left: 1rem; z-index: 20; padding: 0.75rem 1rem; background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); border-radius: 0.5rem; transform: translateY(-150%); }
   .skip-link:focus { transform: translateY(0); }
@@ -143,11 +145,10 @@
     .header-top { align-items: flex-start; gap: 1rem; padding-bottom: 1.25rem; }
     .device-brand { flex-direction: column; align-items: flex-start; gap: 0.75rem; }
     .brand-logo { width: 7rem; }
-    .device-identity { padding-left: 0; border: 0; gap: 0.125rem; }
-    .device-caption { display: none; }
+    .device-identity { padding-left: 0; border: 0; }
     .device-status { padding-top: 0.625rem; }
     .main-nav { justify-content: space-between; gap: 0.75rem; }
     .main-nav a { font-size: 0.8125rem; }
-    .page-content { padding-block: 2rem 3rem; }
+    .page-content { padding-block: 2rem calc(3rem + var(--netsetup-actions-height, 0px)); }
   }
 </style>

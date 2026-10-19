@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
+  import PageActions from '#lib/components/ui/page-actions.svelte';
   import Card from '#lib/components/ui/card.svelte';
   import Button from '#lib/components/ui/button.svelte';
   import Alert from '#lib/components/ui/alert.svelte';
@@ -43,7 +44,7 @@
     }
     if (!cancelled) {
       status = 'unconfirmed';
-      message = 'We could not confirm whether saving completed. Check that the device is online, or reconnect to setup Wi-Fi to check its status.';
+      message = 'We could not confirm whether saving completed. Reconnect to the device and open netsetup to check its status.';
     }
   }
 
@@ -83,24 +84,31 @@
     {#if status === 'saving'}
       <Loading label="Waiting for confirmation…" />
       <p class="text-sm text-muted-foreground">
-        Setup Wi-Fi may disappear as the device switches to your network.
+        Your connection to netsetup may drop as the device switches to your network.
         If verification fails, the previous connection will be restored.
-        Reconnect to setup Wi-Fi if it returns.
+        Reconnect to the device’s own network if it returns.
       </p>
-    {:else if status === 'unconfirmed'}
-      <Button onclick={saveNow}>Check again</Button>
-    {:else if status === 'error'}
-      <Button onclick={() => goto(`/setup/new/${page.params.transport}`)}>Configure again</Button>
-    {:else}
-      <Button onclick={() => goto('/')}>Return home</Button>
     {/if}
     {#if deviceUrl && status !== 'error'}
       <div class="space-y-3 border-t border-border pt-4">
-        <p class="text-sm text-muted-foreground">Join the same network as the device, then open its network setup page.</p>
+        <p class="text-sm text-muted-foreground">Join the same network as the device, then open netsetup.</p>
         <p class="break-all font-mono text-sm">http://{deviceAddress}:3000/</p>
         {#if status !== 'saved'}<p class="text-xs text-muted-foreground">This is the address from the connection test. Saving has not been confirmed.</p>{/if}
-        <a href={deviceUrl} class="inline-flex min-h-11 items-center rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground">Open device</a>
       </div>
     {/if}
   </Card>
+  {#if deviceUrl || status !== 'saving'}
+    <PageActions>
+      {#snippet secondary()}
+        {#if deviceUrl && status === 'saved'}<Button variant="secondary" onclick={() => goto('/')}>Return home</Button>
+        {:else if deviceUrl && status === 'unconfirmed'}<Button variant="secondary" onclick={saveNow}>Check again</Button>{/if}
+      {/snippet}
+      {#snippet primary()}
+        {#if status === 'error'}<Button onclick={() => goto(`/setup/new/${page.params.transport}`)}>Configure again</Button>
+        {:else if deviceUrl}<a href={deviceUrl} class="inline-flex min-h-11 items-center rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground">Open netsetup</a>
+        {:else if status === 'unconfirmed'}<Button onclick={saveNow}>Check again</Button>
+        {:else if status === 'saved'}<Button onclick={() => goto('/')}>Return home</Button>{/if}
+      {/snippet}
+    </PageActions>
+  {/if}
 </div>

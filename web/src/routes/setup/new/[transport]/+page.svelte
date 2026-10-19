@@ -1,6 +1,7 @@
 <script lang="ts">
   import { page } from '$app/state';
   import { goto, preloadCode } from '$app/navigation';
+  import PageActions from '#lib/components/ui/page-actions.svelte';
   import Card from '#lib/components/ui/card.svelte';
   import Button from '#lib/components/ui/button.svelte';
   import Input from '#lib/components/ui/input.svelte';
@@ -365,16 +366,15 @@
     <Alert tone="info">Submitting connection test… keep this tab open.</Alert>
   {/if}
 
-  <div class="flex items-center justify-between gap-3">
-    <Button variant="secondary" onclick={() => goto('/')}>
-      <span class="mr-2 inline-flex items-center"><Icon name="back" /></span>
-      Cancel
-    </Button>
-    <Button onclick={startTest} loading={submitting} disabled={profileLoading || !!profileError || wifiLoading}>
-      {#if !submitting}
-        <span class="mr-2 inline-flex items-center"><Icon name="check" /></span>
-      {/if}
-      {submitting ? 'Starting test…' : 'Test connection'}
-    </Button>
-  </div>
+  <PageActions>
+    {#snippet secondary()}
+      <Button variant="secondary" disabled={submitting} onclick={() => goto('/')}>Cancel</Button>
+    {/snippet}
+    {#snippet primary()}
+      <Button onclick={startTest} loading={submitting} disabled={profileLoading || !!profileError || wifiLoading}>
+        {#if !submitting}<Icon name="check" />{/if}
+        {submitting ? 'Starting test…' : 'Test connection'}
+      </Button>
+    {/snippet}
+  </PageActions>
 </div>

@@ -21,7 +21,7 @@ use uuid::Uuid;
 const NM: &str = "org.freedesktop.NetworkManager";
 const NM_PATH: &str = "/org/freedesktop/NetworkManager";
 const CHECKPOINT_SECONDS: &str = "120";
-const RESTORE_FAILURE: &str = "Could not restore the previous connection. Reconnect to setup Wi-Fi when it becomes available, or reboot the device.";
+const RESTORE_FAILURE: &str = "Could not restore the previous connection. Reconnect to the device’s network when it becomes available, or reboot the device.";
 
 fn failure(message: &str) -> NetworkError {
     NetworkError::ConnectionFailed(message.into())
@@ -231,7 +231,7 @@ pub(super) async fn run(
                 }
                 tokio::time::sleep(Duration::from_millis(500)).await;
             }
-        }).await.map_err(|_| failure("The previous connection is taking too long to return. Reconnect to setup Wi-Fi or reboot the device."))?
+        }).await.map_err(|_| failure("The previous connection is taking too long to return. Reconnect to the device’s network or reboot the device."))?
             .map_err(|_| failure(RESTORE_FAILURE))?;
     }
     let report = operation.map_err(|error| match error {

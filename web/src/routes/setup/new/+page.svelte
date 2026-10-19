@@ -1,5 +1,6 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
+  import PageActions from '#lib/components/ui/page-actions.svelte';
   import Button from '#lib/components/ui/button.svelte';
   import Card from '#lib/components/ui/card.svelte';
   import Icon from '#lib/components/ui/icon.svelte';
@@ -37,4 +38,5 @@
       </Button>
     </Card>
   </div>
+  <PageActions>{#snippet secondary()}<Button variant="secondary" onclick={() => goto('/')}>Cancel</Button>{/snippet}</PageActions>
 </div>

@@ -24,8 +24,8 @@ export default defineConfig({
       browserName: 'chromium',
       launchOptions: configuredChromiumPath ? { executablePath: configuredChromiumPath } : undefined
     } },
-    { name: 'firefox', grep: /spinner rotates normally|SSID selection/, use: { browserName: 'firefox' } },
-    { name: 'webkit', grep: /handoff page|DNS help|password reveal|spinner rotates normally|SSID selection/, use: {
+    { name: 'firefox', grep: /spinner rotates normally|SSID selection|delete confirmation|page actions/, use: { browserName: 'firefox' } },
+    { name: 'webkit', grep: /handoff page|DNS help|password reveal|spinner rotates normally|SSID selection|delete confirmation|page actions/, use: {
       browserName: 'webkit', viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true
     } }
   ]

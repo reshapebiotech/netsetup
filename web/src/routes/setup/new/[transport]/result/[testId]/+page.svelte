@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
+  import PageActions from '#lib/components/ui/page-actions.svelte';
   import Card from '#lib/components/ui/card.svelte';
   import Button from '#lib/components/ui/button.svelte';
   import Alert from '#lib/components/ui/alert.svelte';
@@ -59,12 +60,38 @@
       {transport === 'wifi' ? 'Wi-Fi' : 'Ethernet'} test complete
     </h1>
   </header>
+  {#if !loading}
+    <PageActions note={status?.status === 'Connected' ? 'Settings not saved yet' : undefined}>
+      {#snippet secondary()}
+        {#if status?.status === 'Connected' && !error}
+          <Button variant="secondary" disabled={movingToSave} onclick={retry}>Change network</Button>
+        {/if}
+      {/snippet}
+      {#snippet primary()}
+        {#if error}
+          <Button onclick={loadStatus}>Reload result</Button>
+        {:else if status?.status === 'Connected'}
+          <Button onclick={save} loading={movingToSave}>
+            <Icon name="save" />
+            {servicesReady(status.detail) ? 'Save connection' : 'Save anyway'}
+          </Button>
+        {:else if status?.status === 'Failed'}
+          <Button onclick={retry}>Try again</Button>
+        {:else if status?.status === 'Saved'}
+          <Button onclick={() => goto('/')}>Back to home</Button>
+        {:else}
+          <Button onclick={() => goto(status?.status === 'Saving'
+            ? `/setup/new/${transport}/save-handoff/${testId}`
+            : `/setup/new/${transport}/testing/${testId}`)}>Check progress</Button>
+        {/if}
+      {/snippet}
+    </PageActions>
+  {/if}
   <Card className="space-y-4">
     {#if loading}
       <Loading label="Loading test result…" />
     {:else if error}
       <Alert tone="error">{error}</Alert>
-      <Button onclick={loadStatus}>Reload result</Button>
     {:else if status?.status === 'Connected'}
       <ConnectionReport report={status.detail} />
       {#if !servicesReady(status.detail)}
@@ -75,24 +102,15 @@
       {/if}
 
       <p class="text-sm text-muted-foreground">Your previous connection has been restored. Saving will apply these settings and replace the previous {transport === 'wifi' ? 'Wi-Fi' : 'Ethernet'} profile.</p>
-      <div class="flex flex-wrap items-center gap-3">
-        <Button onclick={save} loading={movingToSave}>
-          <span class="mr-2 inline-flex items-center"><Icon name="save" /></span>
-          {servicesReady(status.detail) ? 'Save connection' : 'Save anyway'}
-        </Button>
-        <Button variant="secondary" onclick={retry}>Try a different network</Button>
-      </div>
+
     {:else if status?.status === 'Failed'}
       <Alert tone="error">{status.detail}</Alert>
-      <Button onclick={retry}>Try again</Button>
     {:else if status?.status === 'Saved'}
       <Alert tone="info">This connection has already been saved.</Alert>
-      <Button onclick={() => goto('/')}>Back to home</Button>
     {:else}
       <Alert tone="info">The network operation is still in progress.</Alert>
-      <Button onclick={() => goto(status?.status === 'Saving'
-        ? `/setup/new/${transport}/save-handoff/${testId}`
-        : `/setup/new/${transport}/testing/${testId}`)}>Check progress</Button>
+
     {/if}
   </Card>
+
 </div>

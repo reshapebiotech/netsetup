@@ -1,6 +1,6 @@
-# reshape-netsetup
+# netsetup
 
-Network setup for Reshape devices. Join the device's setup Wi-Fi to configure
+netsetup configures network connections on Reshape devices. Join the device's setup Wi-Fi to configure
 Wi-Fi or Ethernet through a local captive portal, without needing internet access.
 
 Runs on 64-bit Debian/Raspberry Pi OS 12+ with NetworkManager. The Rust binary

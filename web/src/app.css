@@ -41,7 +41,10 @@
   --warning: 40 95% 70%;
 }
 
+html { scroll-padding-bottom: calc(var(--netsetup-actions-height, 0px) + 1rem); }
+
 body {
+  padding-inline: env(safe-area-inset-left, 0px) env(safe-area-inset-right, 0px);
   min-width: 280px;
   min-height: 100vh;
   color: hsl(var(--foreground));

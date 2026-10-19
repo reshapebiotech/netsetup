@@ -48,39 +48,35 @@
 </script>
 
 <svelte:head>
-  <title>Network setup help · {device.hostname ?? 'Network setup'}</title>
+  <title>Help • netsetup{device.hostname ? ` • ${device.hostname}` : ''}</title>
 </svelte:head>
 
 <main class="mx-auto max-w-2xl">
   <header class="mb-6 space-y-3">
-    <a href="/" class="inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline">← Back to network setup</a>
-    <h1 class="text-3xl font-semibold tracking-tight">Network setup help</h1>
-    <div class="space-y-2 rounded-lg border border-border bg-card p-4">
-      {#if setupWifiName}
-        <p class="text-sm text-muted-foreground">This device’s Wi-Fi network</p>
-        <p class="text-xl font-semibold break-words"><bdi>{setupWifiName}</bdi></p>
-      {/if}
-      <p class="text-sm leading-relaxed text-muted-foreground">The device creates its own Wi-Fi network so you can connect your phone and configure it. We call this <strong class="text-foreground">setup Wi-Fi</strong> below.</p>
-    </div>
+    <a href="/" class="inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline">← Back to netsetup</a>
+    <h1 class="text-3xl font-semibold tracking-tight">netsetup help</h1>
+    <p class="rounded-lg border border-border bg-card p-4 text-sm leading-relaxed text-muted-foreground">
+      To open <strong class="text-foreground">netsetup</strong>, connect to <strong class="text-foreground"><bdi>{setupWifiName ?? 'the device’s network'}</bdi></strong> in your phone’s Wi-Fi settings.
+    </p>
   </header>
 
   <div class="overflow-hidden rounded-xl border border-border bg-card ">
     <details class="help-topic" name="help-topic">
       <summary>
-        <span><span class="topic-title">Setup Wi-Fi disappeared</span><span class="topic-hint">During a connection test or after saving</span></span>
+        <span><span class="topic-title">Connection lost during a test</span><span class="topic-hint">During a connection test or after saving</span></span>
         <span class="chevron" aria-hidden="true">⌄</span>
       </summary>
       <div class="answer">
-        <p>The device briefly leaves setup Wi-Fi to try your network. <strong>Keep the test tab open.</strong></p>
+        <p>The device briefly disconnects to try your network. <strong>Keep netsetup open.</strong></p>
         <ol class="steps">
-          <li><span aria-hidden="true">1</span><div>Wait up to two minutes for setup Wi-Fi to return.</div></li>
-          <li><span aria-hidden="true">2</span><div>Rejoin the same setup Wi-Fi in your phone’s Wi-Fi settings.</div></li>
-          <li><span aria-hidden="true">3</span><div>Return to the test tab to review and save the result.</div></li>
+          <li><span aria-hidden="true">1</span><div>Wait up to two minutes for the device’s network to return.</div></li>
+          <li><span aria-hidden="true">2</span><div>Rejoin {setupWifiName ?? 'the device’s network'} in your phone’s Wi-Fi settings.</div></li>
+          <li><span aria-hidden="true">3</span><div>Return to netsetup to review and save the result.</div></li>
         </ol>
-        <p class="text-muted-foreground">Popup closed? While connected to setup Wi-Fi, open <a class="font-medium text-primary underline underline-offset-4" href="http://10.42.0.1/">10.42.0.1</a> in your browser.</p>
+        <p class="text-muted-foreground">Popup closed? While connected to the device’s network, open <a class="font-medium text-primary underline underline-offset-4" href="http://10.42.0.1/">10.42.0.1</a> in your browser.</p>
         <aside class="border-l-2 border-primary/40 pl-4">
           <p class="font-semibold">Already saved successfully?</p>
-          <p class="mt-1 text-muted-foreground">Setup Wi-Fi may close when the device joins your network. Reconnect your phone to your usual Wi-Fi.</p>
+          <p class="mt-1 text-muted-foreground">The direct connection may close when the device joins your network. Reconnect your phone to your usual Wi-Fi.</p>
         </aside>
       </div>
     </details>
@@ -110,26 +106,26 @@
 
     <details class="help-topic" name="help-topic">
       <summary>
-        <span><span class="topic-title">I can’t find setup Wi-Fi</span><span class="topic-hint">When it opens and how to get back in</span></span>
+        <span><span class="topic-title">I can’t open netsetup</span><span class="topic-hint">When it opens and how to get back in</span></span>
         <span class="chevron" aria-hidden="true">⌄</span>
       </summary>
       <div class="answer">
-        <p><strong>Setup Wi-Fi opens when the device cannot get online at startup.</strong> If you need to change networks, restart the device to trigger that check again.</p>
+        <p><strong>The device opens its own network when it cannot get online at startup.</strong> If you need to change networks, restart the device to trigger that check again.</p>
         {#if bootGrace !== null}
-          <p>After the device boots, saved networks have <strong>{bootGrace}</strong> to provide internet access. If none does, setup Wi-Fi opens.</p>
+          <p>After the device boots, saved networks have <strong>{bootGrace}</strong> to provide internet access. If none does, the device’s network opens.</p>
         {:else}
-          <p>After the device boots, it gives saved networks a startup window to provide internet access. If none does, setup Wi-Fi opens.</p>
+          <p>After the device boots, it gives saved networks a startup window to provide internet access. If none does, the device’s network opens.</p>
         {/if}
-        <p>After startup, setup Wi-Fi also opens if all saved Wi-Fi and Ethernet profiles have been removed. The device’s own access point does not count. A saved Ethernet profile still counts while disconnected or waiting for DHCP.</p>
-        <p class="text-muted-foreground">Losing internet later does not automatically open setup Wi-Fi while saved networks remain. Connection tests and saves pause this check.</p>
-        <p class="text-muted-foreground">If the device is already online, you can open this tool over its existing network. Setup Wi-Fi test mode in Settings keeps the access point available until you turn it off. It can run alongside Ethernet; testing another Wi-Fi network can still interrupt it.</p>
+        <p>After startup, the device’s network also opens if all saved Wi-Fi and Ethernet profiles have been removed. The device’s own access point does not count. A saved Ethernet profile still counts while disconnected or waiting for DHCP.</p>
+        <p class="text-muted-foreground">Losing internet later does not automatically open the device’s network while saved networks remain. Connection tests and saves pause this check.</p>
+        <p class="text-muted-foreground">If the device is already online, you can open netsetup over its existing network. Direct access in Settings keeps the device’s own network available until you turn it off. It can run alongside Ethernet; testing another Wi-Fi network can still interrupt it.</p>
       </div>
     </details>
   </div>
 
   <footer class="mt-6 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
     {#each $branding.help_links as link (link.url)}
-      <a class="inline-flex min-h-11 items-center font-medium text-primary hover:underline" href={link.url} target="_blank" rel="noreferrer">Full setup guide ↗</a>
+      <a class="inline-flex min-h-11 items-center font-medium text-primary hover:underline" href={link.url} target="_blank" rel="noreferrer">Online guide ↗</a>
     {/each}
     <span class="text-muted-foreground">Requires internet</span>
   </footer>

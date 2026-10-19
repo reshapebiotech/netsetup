@@ -60,7 +60,7 @@ test('wifi testing reconnects, shows checks, and confirms save', async ({ page }
   await expect(page.getByText('Internet access', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Save connection', exact: true }).click();
   await expect(page.getByText('Connection saved. Full service connectivity.', { exact: true })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Open device', exact: true })).toHaveAttribute('href', 'http://192.168.1.42:3000/setup/new/wifi/save-handoff/abc-123');
+  await expect(page.getByRole('link', { name: 'Open netsetup', exact: true })).toHaveAttribute('href', 'http://192.168.1.42:3000/setup/new/wifi/save-handoff/abc-123');
   await page.getByRole('button', { name: 'Return home' }).click();
   await expect(page.getByText('reshape-managed-wifi', { exact: true })).toBeVisible();
 });
@@ -97,7 +97,7 @@ test('a lost save response does not imply success', async ({ page }) => {
   await page.goto('/setup/new/wifi/save-handoff/unknown');
   await expect(page.getByText('We could not confirm whether saving completed.', { exact: false })).toBeVisible();
   await expect(page.getByText('Connection saved. Full service connectivity.')).not.toBeVisible();
-  await expect(page.getByRole('link', { name: 'Open device', exact: true })).toHaveAttribute('href', 'http://192.168.1.42:3000/setup/new/wifi/save-handoff/unknown');
+  await expect(page.getByRole('link', { name: 'Open netsetup', exact: true })).toHaveAttribute('href', 'http://192.168.1.42:3000/setup/new/wifi/save-handoff/unknown');
   await expect(page.getByText('Saving has not been confirmed.', { exact: false })).toBeVisible();
 });
 
@@ -227,21 +227,21 @@ for (const [seconds, expected] of [[90, '90 seconds'], [120, '2 minutes']] as co
     }));
     await page.goto('/');
     await page.getByRole('link', { name: 'Help', exact: true }).click();
-    await expect(page.getByRole('heading', { name: 'Network setup help', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'netsetup help', exact: true })).toBeVisible();
     await expect(page.getByText('testpi', { exact: true })).toBeVisible();
-    await expect(page.getByText('The device creates its own Wi-Fi network', { exact: false })).toBeVisible();
-    await page.locator('summary').filter({ hasText: 'I can’t find setup Wi-Fi' }).click();
+    await expect(page.getByText('To open netsetup, connect to testpi in your phone’s Wi-Fi settings.', { exact: true })).toBeVisible();
+    await page.locator('summary').filter({ hasText: 'I can’t open netsetup' }).click();
     await expect(page.getByText(`saved networks have ${expected}`, { exact: false })).toBeVisible();
-    await expect(page.getByText('setup Wi-Fi also opens if all saved Wi-Fi and Ethernet profiles have been removed', { exact: false })).toBeVisible();
-    await expect(page.getByText('Losing internet later does not automatically open setup Wi-Fi while saved networks remain.', { exact: false })).toBeVisible();
+    await expect(page.getByText('the device’s network also opens if all saved Wi-Fi and Ethernet profiles have been removed', { exact: false })).toBeVisible();
+    await expect(page.getByText('Losing internet later does not automatically open the device’s network while saved networks remain.', { exact: false })).toBeVisible();
   });
 }
 
 test('help remains readable when device settings cannot be loaded', async ({ page }) => {
   await page.route('**/api/network/access_point/controller', route => route.abort());
   await page.goto('/help');
-  await expect(page.locator('summary').filter({ hasText: 'Setup Wi-Fi disappeared' })).toBeVisible();
-  await page.locator('summary').filter({ hasText: 'I can’t find setup Wi-Fi' }).click();
+  await expect(page.locator('summary').filter({ hasText: 'Connection lost during a test' })).toBeVisible();
+  await page.locator('summary').filter({ hasText: 'I can’t open netsetup' }).click();
   await expect(page.getByText('it gives saved networks a startup window', { exact: false })).toBeVisible();
   await expect(page.getByText('90 seconds', { exact: false })).toHaveCount(0);
 });
@@ -427,7 +427,7 @@ test('handoff page loads before the Wi-Fi test can disconnect the browser', asyn
   await page.getByLabel('Password', { exact: true }).fill('password');
   await page.getByRole('button', { name: 'Test connection', exact: true }).click();
   await expect(page).toHaveURL(/\/testing\/offline$/);
-  await expect(page.getByRole('heading', { name: 'Stay on setup Wi-Fi', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Stay connected to netsetup', exact: true })).toBeVisible();
   await expect(page.getByText('Waiting to reconnect to your device…', { exact: true })).toBeVisible();
   await expect(page.getByText('Setup-Lab-0440', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('If asked, choose to stay connected without internet.', { exact: true })).toBeVisible();
@@ -539,4 +539,175 @@ test('SSID selection distinguishes security groups without pinning a radio', asy
   await expect.poll(() => submissions.length).toBe(2);
   expect(submissions[1].ssid).toBe('Shared Wi-Fi');
   expect(submissions[1]).not.toHaveProperty('password');
+});
+
+
+test('delete confirmation requires explicit approval and deletes only the selected profile', async ({ page }) => {
+  let networks = [
+    { id: 'wifi-profile', transport: 'wifi', display_name: 'Company Wi-Fi', managed: true },
+    { id: 'wired-profile', transport: 'ethernet', display_name: 'Office Ethernet', managed: true }
+  ];
+  const deleted: string[] = [];
+  await page.route('**/api/network/saved', route => route.fulfill({ json: networks }));
+  await page.route('**/api/network/saved/*', route => {
+    expect(route.request().method()).toBe('DELETE');
+    const id = new URL(route.request().url()).pathname.split('/').at(-1)!;
+    deleted.push(id);
+    networks = networks.filter(network => network.id !== id);
+    return route.fulfill({ status: 204 });
+  });
+  await page.goto('/');
+  const opener = page.getByRole('button', { name: 'Delete', exact: true }).first();
+  await opener.focus();
+  await opener.press('Enter');
+  const dialog = page.getByRole('alertdialog', { name: 'Delete connection?' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText('Company Wi-Fi', { exact: true })).toBeVisible();
+  await expect(dialog.getByText('If you’re using this network to reach the device, you may lose access to netsetup.', { exact: false })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
+  expect(deleted).toEqual([]);
+  await page.keyboard.press('Escape');
+  await expect(dialog).not.toBeVisible();
+  await expect(page.getByRole('button', { name: 'Delete', exact: true }).first()).toBeFocused();
+  expect(deleted).toEqual([]);
+  await page.getByRole('button', { name: 'Delete', exact: true }).first().click();
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  expect(deleted).toEqual([]);
+  await page.getByRole('button', { name: 'Delete', exact: true }).first().click();
+  await dialog.getByRole('button', { name: 'Delete connection', exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  await expect(page.getByRole('link', { name: /Company Wi-Fi/ })).not.toBeVisible();
+  await expect(page.getByRole('link', { name: /Office Ethernet/ })).toBeVisible();
+  expect(deleted).toEqual(['wifi-profile']);
+});
+
+test('delete confirmation keeps a failed deletion open and clears errors on cancellation', async ({ page }) => {
+  const deleted: string[] = [];
+  await page.route('**/api/network/saved', route => route.fulfill({ json: [
+    { id: 'wifi-profile', transport: 'wifi', display_name: 'Company Wi-Fi', managed: true },
+    { id: 'wired-profile', transport: 'ethernet', display_name: 'Office Ethernet', managed: true }
+  ] }));
+  await page.route('**/api/network/saved/*', route => {
+    deleted.push(route.request().url().split('/').at(-1)!);
+    return route.fulfill({ status: 409, json: { error: 'Another network operation is in progress' } });
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Delete', exact: true }).first().click();
+  const dialog = page.getByRole('alertdialog', { name: 'Delete connection?' });
+  await dialog.getByRole('button', { name: 'Delete connection', exact: true }).click();
+  await expect(dialog.getByRole('alert')).toHaveText('Another network operation is in progress');
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.getByRole('button', { name: 'Delete', exact: true }).nth(1).click();
+  await expect(dialog.getByText('Office Ethernet', { exact: true })).toBeVisible();
+  await expect(dialog.getByRole('alert')).not.toBeVisible();
+  expect(deleted).toEqual(['wifi-profile']);
+});
+
+
+test('page actions keep save visible and let the final report scroll above the bar', async ({ page }) => {
+  await page.route('**/api/network/status/footer', route => route.fulfill({ json: { status: 'Connected', detail: report } }));
+  await page.goto('/setup/new/wifi/result/footer');
+  const bar = page.getByRole('region', { name: 'Page actions', exact: true });
+  const save = bar.getByRole('button', { name: 'Save connection', exact: true });
+  const finalText = page.getByText('Your previous connection has been restored.', { exact: false });
+  for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 568 }]) {
+    await page.setViewportSize(viewport);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await expect.poll(async () => {
+      const button = await save.boundingBox();
+      return !!button && button.y >= 0 && button.y + button.height <= viewport.height;
+    }).toBe(true);
+    await expect(bar.getByText('Settings not saved yet', { exact: true })).toBeVisible();
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await expect.poll(async () => {
+      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+      const text = await finalText.boundingBox();
+      const footer = await bar.boundingBox();
+      return !!text && !!footer && text.y >= 0 && text.y + text.height <= footer.y;
+    }).toBe(true);
+    const primary = await save.boundingBox();
+    const secondary = await bar.getByRole('button', { name: 'Change network' }).boundingBox();
+    expect(primary!.x).toBeGreaterThan(secondary!.x);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
+  }
+  await save.evaluate(element => { element.style.fontSize = '1.5rem'; });
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await expect.poll(async () => {
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    const text = await finalText.boundingBox();
+    const footer = await bar.boundingBox();
+    return !!text && !!footer && text.y + text.height <= footer.y;
+  }).toBe(true);
+});
+
+test('page actions reserve space for the last form field and expanded reset controls', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 568 });
+  await page.route('**/api/network/wifi/scan', route => route.fulfill({ json: [] }));
+  await page.route('**/api/network/saved', route => route.fulfill({ json: [] }));
+  await page.goto('/setup/new/wifi');
+  const bar = page.getByRole('region', { name: 'Page actions', exact: true });
+  await page.getByRole('checkbox', { name: 'Enter network name manually' }).check();
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await expect.poll(async () => {
+    const input = await page.getByLabel('Custom DNS servers (comma separated)', { exact: true }).boundingBox();
+    const footer = await bar.boundingBox();
+    return !!input && !!footer && input.y >= 0 && input.y + input.height <= footer.y;
+  }).toBe(true);
+  await page.goto('/');
+  await expect(bar).toBeVisible();
+  await expect(page.getByText('Device is already online using automatic network settings (DHCP).', { exact: false })).toBeVisible();
+  const initialHeight = (await bar.boundingBox())!.height;
+  await bar.getByRole('button', { name: 'Reset all networks', exact: true }).click();
+  await expect.poll(async () => (await bar.boundingBox())!.height).toBeGreaterThan(initialHeight);
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await expect.poll(async () => {
+    const text = await page.getByText('Device is already online using automatic network settings (DHCP).', { exact: false }).boundingBox();
+    const footer = await bar.boundingBox();
+    return !!text && !!footer && text.y >= 0 && text.y + text.height <= footer.y;
+  }).toBe(true);
+  await bar.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect.poll(async () => (await bar.boundingBox())!.height).toBe(initialHeight);
+});
+
+test('page actions release their reserved space on navigation and use the netsetup identity', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.route('**/api/network/saved', route => route.fulfill({ json: [] }));
+  await page.goto('/');
+  await expect(page.locator('.device-identity')).toHaveText('netsetup • RS-12345');
+  await expect(page).toHaveTitle('netsetup • RS-12345');
+  await expect(page.getByRole('region', { name: 'Page actions', exact: true })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => parseFloat(document.documentElement.style.getPropertyValue('--netsetup-actions-height')))).toBeGreaterThan(0);
+  await page.getByRole('button', { name: 'Add new network', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Choose connection type', exact: true })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => parseFloat(document.documentElement.style.getPropertyValue('--netsetup-actions-height')))).toBeGreaterThan(0);
+  await page.getByRole('link', { name: 'Help', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'netsetup help', exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Page actions', exact: true })).not.toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.style.getPropertyValue('--netsetup-actions-height'))).toBe('');
+  await expect(page).toHaveTitle('Help • netsetup • RS-12345');
+});
+
+
+test('page actions sit above the report on desktop and only pin on phones', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.route('**/api/network/status/desktop', route => route.fulfill({ json: { status: 'Connected', detail: report } }));
+  await page.goto('/setup/new/wifi/result/desktop');
+  const bar = page.getByRole('region', { name: 'Page actions', exact: true });
+  const save = bar.getByRole('button', { name: 'Save connection', exact: true });
+  await expect(save).toBeVisible();
+  expect(await bar.evaluate(element => getComputedStyle(element).position)).toBe('static');
+  const actions = (await bar.boundingBox())!;
+  const summary = (await page.getByText('Full service connectivity', { exact: true }).boundingBox())!;
+  expect(actions.y + actions.height).toBeLessThan(summary.y);
+  expect(actions.width).toBeLessThan(1280);
+  expect((await save.boundingBox())!.y).toBeLessThan(800);
+  await expect.poll(() => page.evaluate(() => document.documentElement.style.getPropertyValue('--netsetup-actions-height'))).toBe('0px');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(() => bar.evaluate(element => getComputedStyle(element).position)).toBe('fixed');
+  await expect.poll(() => page.evaluate(() => parseFloat(document.documentElement.style.getPropertyValue('--netsetup-actions-height')))).toBeGreaterThan(0);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.style.getPropertyValue('--netsetup-actions-height'))).toBe('0px');
+  expect(await bar.evaluate(element => getComputedStyle(element).position)).toBe('static');
 });

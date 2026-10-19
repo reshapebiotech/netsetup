@@ -1,5 +1,6 @@
 <script lang="ts">
   import { getDevice } from '#lib/device.js';
+  import PageActions from '#lib/components/ui/page-actions.svelte';
   import Button from '#lib/components/ui/button.svelte';
   import Card from '#lib/components/ui/card.svelte';
   import Alert from '#lib/components/ui/alert.svelte';
@@ -34,13 +35,12 @@
   }
 </script>
 
-<svelte:head><title>Connectivity · {device.hostname ?? 'Network setup'}</title></svelte:head>
+<svelte:head><title>Connectivity • netsetup{device.hostname ? ` • ${device.hostname}` : ''}</title></svelte:head>
 
 <main class="mx-auto max-w-2xl space-y-4">
   <header class="space-y-2">
     <div class="flex flex-wrap items-center justify-between gap-3">
       <h1 class="text-3xl font-semibold tracking-tight">Connectivity</h1>
-      <Button onclick={check} loading={checking}>{checking ? 'Checking…' : 'Check connectivity'}</Button>
     </div>
     <p class="text-sm text-muted-foreground">Check your current connections without changing network settings.</p>
     {#if checkedAt}<p class="text-xs text-muted-foreground">{device.hostname ?? 'Device'} · <time datetime={checkedAt.toISOString()}>{checkedTime}</time></p>{/if}
@@ -49,7 +49,7 @@
     {:else if error}
       <Alert tone="error">{error}</Alert>
     {:else if results?.length === 0}
-      <Alert tone="info">No active Wi-Fi or Ethernet connection to check. The device’s setup Wi-Fi is only for configuration.</Alert>
+      <Alert tone="info">No active Wi-Fi or Ethernet connection to check. The device’s own network is used to open netsetup.</Alert>
       <a href="/setup/new" class="inline-flex min-h-11 items-center font-medium text-primary hover:underline">Add a network →</a>
     {/if}
   </header>
@@ -84,7 +84,10 @@
       {/if}
     </Card>
   {/each}
-  <a href="/help" class="inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline">Help understanding the results →</a>
+  <PageActions>
+    {#snippet secondary()}<a href="/help" class="inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline">Help with results</a>{/snippet}
+    {#snippet primary()}<Button onclick={check} loading={checking}>{checking ? 'Checking…' : 'Check connectivity'}</Button>{/snippet}
+  </PageActions>
 </main>
 
 

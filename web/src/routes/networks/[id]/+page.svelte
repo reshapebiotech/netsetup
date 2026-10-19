@@ -4,6 +4,7 @@
   import { getDevice } from '#lib/device.js';
   import { networkApi } from '#lib/network/api.js';
   import type { SavedNetworkDetails } from '#lib/network/types.js';
+  import PageActions from '#lib/components/ui/page-actions.svelte';
   import Card from '#lib/components/ui/card.svelte';
   import Alert from '#lib/components/ui/alert.svelte';
   import Loading from '#lib/components/ui/loading.svelte';
@@ -24,11 +25,10 @@
   onMount(() => { void load(); });
 </script>
 
-<svelte:head><title>Network configuration · {device.hostname ?? 'Network setup'}</title></svelte:head>
+<svelte:head><title>Connection • netsetup{device.hostname ? ` • ${device.hostname}` : ''}</title></svelte:head>
 
 <main class="mx-auto max-w-2xl space-y-6">
   <header class="space-y-3">
-    <a href="/" class="inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline">← Back to networks</a>
     <h1 class="break-words text-3xl font-semibold">{details?.settings.ssid ?? details?.network.display_name ?? 'Network configuration'}</h1>
     <p class="text-muted-foreground">Saved settings for this connection.</p>
   </header>
@@ -36,7 +36,6 @@
     <Loading label="Loading network configuration…" />
   {:else if error}
     <Alert tone="error">{error}</Alert>
-    <Button onclick={load}>Try again</Button>
   {:else if details}
     <Card className="space-y-4">
       <h2 class="text-lg font-semibold">Connection</h2>
@@ -61,10 +60,15 @@
     </Card>
     {#if details.edit_unavailable}
       <Alert tone="info">{details.edit_unavailable}</Alert>
-    {:else}
-      <div class="flex justify-end">
-        <a href={`/setup/new/${details.network.transport}?edit=${encodeURIComponent(details.network.id)}`} class="inline-flex min-h-11 items-center rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground hover:opacity-90">Edit connection</a>
-      </div>
     {/if}
   {/if}
+  <PageActions>
+    {#snippet secondary()}<a href="/" class="inline-flex min-h-11 items-center rounded-lg border border-border px-4 py-2.5 text-sm font-medium">Back to networks</a>{/snippet}
+    {#snippet primary()}
+      {#if error}<Button onclick={load}>Try again</Button>
+      {:else if details && !details.edit_unavailable}
+        <a href={`/setup/new/${details.network.transport}?edit=${encodeURIComponent(details.network.id)}`} class="inline-flex min-h-11 items-center rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground">Edit connection</a>
+      {/if}
+    {/snippet}
+  </PageActions>
 </main>
