@@ -1,31 +1,10 @@
 <script lang="ts">
   import { getDevice } from '#lib/device.js';
   import { onMount } from 'svelte';
-  import ConnectionReport from '#lib/components/network/connection-report.svelte';
-  import type { ConnectivityReport, EndpointGroupConfig } from '#lib/network/types.js';
   import { networkApi } from '#lib/network/api.js';
   import { branding } from '#lib/branding.js';
 
   const device = getDevice();
-
-  let groups = $state<EndpointGroupConfig[]>([]);
-  const examples = $derived([
-    { explanation: 'Every configured endpoint responded. Choose Save connection to keep these settings.', report: exampleReport('full') },
-    { explanation: 'The device has an address and its router responds, but services could not be reached. Choose Save anyway if a local connection is what you need, or ask IT to check access.', report: exampleReport('none') },
-    { explanation: 'Some endpoints responded and others did not. Use the group names and individual results to see what is affected. Required groups are needed for normal operation.', report: exampleReport('partial') }
-  ]);
-  function exampleReport(level: 'full' | 'partial' | 'none'): ConnectivityReport {
-    return {
-      interface: 'wlan0', address: '192.168.1.42', gateway_reachable: true,
-      internet_verified: level !== 'none',
-      endpoint_groups: groups.map(group => ({ ...group, endpoints: group.endpoints.map((endpoint, index) => ({
-        ...endpoint, reachable: level === 'full' || (level === 'partial' && (group.required || index < group.endpoints.length - 1))
-      })) }))
-    };
-  }
-
-  let selectedExample = $state(1);
-  const example = $derived(examples[selectedExample]);
 
   let setupWifiName = $state<string | null>(null);
   let bootGraceSeconds = $state<number | null>(null);
@@ -36,7 +15,6 @@
   );
 
   onMount(() => {
-    void networkApi.getConnectivityGroups().then(value => { groups = value; }).catch(() => {});
     void networkApi.getApControllerStatus().then(status => {
       setupWifiName = typeof status.ssid === 'string' && status.ssid.length > 0 ? status.ssid : null;
       bootGraceSeconds = Number.isSafeInteger(status.boot_grace_seconds) && status.boot_grace_seconds >= 0
@@ -83,24 +61,11 @@
 
     <details class="help-topic" name="help-topic">
       <summary>
-        <span><span class="topic-title">What does my test result mean?</span><span class="topic-hint">Understand the checks and whether to save</span></span>
+        <span><span class="topic-title">Some services couldn’t be reached</span><span class="topic-hint">What to do about partial connectivity</span></span>
         <span class="chevron" aria-hidden="true">⌄</span>
       </summary>
       <div class="answer">
-        <div class="space-y-2">
-          <label for="example-result" class="block font-semibold">Choose the result you saw</label>
-          <select id="example-result" bind:value={selectedExample} class="w-full rounded-md border-border bg-card py-3 text-base focus:border-primary focus:ring-primary">
-            <option value={0}>Full connectivity</option>
-            <option value={1}>Local connection only</option>
-            <option value={2}>Partial connectivity</option>
-          </select>
-        </div>
-        <p>{example.explanation}</p>
-        <figure class="overflow-hidden rounded-lg border border-border">
-          <figcaption class="border-b border-border bg-muted/40 px-4 py-2 text-xs font-medium text-muted-foreground">Example result · illustration only</figcaption>
-          <div class="p-4"><ConnectionReport report={example.report} /></div>
-        </figure>
-        <p class="text-muted-foreground">“Could not verify” can also mean a firewall or DNS setting blocked the check. It does not always mean the network is disconnected.</p>
+        <p>Take a screenshot of the results and share it with your IT department or Reshape support. It shows which services need attention and can help identify firewall or network restrictions.</p>
       </div>
     </details>
 

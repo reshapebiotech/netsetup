@@ -247,7 +247,7 @@ test('help remains readable when device settings cannot be loaded', async ({ pag
 });
 
 
-test('help examples are read-only and never start network operations', async ({ page }) => {
+test('help provides partial connectivity guidance without changing networks', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const mutations: string[] = [];
   await page.route('**/api/network/**', route => {
@@ -256,14 +256,8 @@ test('help examples are read-only and never start network operations', async ({ 
   });
   await page.goto('/help');
   await expect(page.getByText('No internet', { exact: true })).toBeVisible();
-  await page.locator('summary').filter({ hasText: 'What does my test result mean?' }).click();
-  const preview = page.locator('figure');
-  await expect(preview.getByText('No service connectivity', { exact: true })).toBeVisible();
-  await page.getByLabel('Choose the result you saw').selectOption('0');
-  await expect(preview.getByText('Full service connectivity', { exact: true })).toBeVisible();
-  await page.getByLabel('Choose the result you saw').selectOption('2');
-  await expect(preview.getByText('Required services available; other services limited', { exact: true })).toBeVisible();
-  await expect(preview.locator('button, input, select, textarea, a')).toHaveCount(0);
+  await page.locator('summary').filter({ hasText: 'Some services couldn’t be reached' }).click();
+  await expect(page.getByText('Take a screenshot of the results and share it with your IT department or Reshape support.', { exact: false })).toBeVisible();
   expect(mutations).toEqual([]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
