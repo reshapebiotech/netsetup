@@ -75,6 +75,14 @@ pub enum ConnectionState {
     Failed(String), // Reason for failure
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct NetworkDraft {
+    pub test_id: uuid::Uuid,
+    pub transport: NetworkTransport,
+    pub display_name: String,
+    pub state: ConnectionState,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ConnectivityReport {
     pub interface: String,

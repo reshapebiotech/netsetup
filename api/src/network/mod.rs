@@ -1,6 +1,7 @@
 mod ap_supervisor;
 mod availability;
 mod diagnostics;
+mod drafts;
 pub mod mock;
 pub mod nmcli;
 mod profiles;
@@ -13,8 +14,8 @@ use uuid::Uuid;
 
 use crate::network::types::{
     AccessPointControllerStatus, AccessPointPreferences, AccessPointStatus, ConnectionState,
-    Connectivity, CurrentConnectionCheck, EthernetNetwork, NetworkMacAddresses, NetworkSettings,
-    SavedNetwork, SavedNetworkDetails, WifiNetwork,
+    Connectivity, CurrentConnectionCheck, EthernetNetwork, NetworkDraft, NetworkMacAddresses,
+    NetworkSettings, SavedNetwork, SavedNetworkDetails, WifiNetwork,
 };
 
 #[derive(Error, Debug)]
@@ -54,6 +55,10 @@ pub trait NetworkController: Send + Sync {
 
     /// Starts an Ethernet connection test without committing final managed config.
     async fn start_ethernet_test(&self, settings: NetworkSettings) -> Result<Uuid>;
+
+    async fn get_drafts(&self) -> Result<Vec<NetworkDraft>>;
+
+    async fn get_draft(&self, test_id: Uuid) -> Result<SavedNetworkDetails>;
 
     /// Polls the status of an ongoing connection test
     async fn connection_status(&self, test_id: Uuid) -> Result<ConnectionState>;

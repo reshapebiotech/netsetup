@@ -7,6 +7,13 @@ export type ConnectionState =
   | { status: 'Saved'; detail: ConnectivityReport }
   | { status: 'Failed'; detail: string };
 
+export interface NetworkDraft {
+  test_id: string;
+  transport: Transport;
+  display_name: string;
+  state: ConnectionState;
+}
+
 export interface WifiNetwork {
   id: string;
   bssids: string[];

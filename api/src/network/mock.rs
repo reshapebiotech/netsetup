@@ -1,7 +1,9 @@
+use super::drafts::{self, TestRecord};
 use crate::network::types::{
     AccessPointControllerStatus, AccessPointPreferences, AccessPointStatus, ConnectionState,
-    Connectivity, ConnectivityReport, CurrentConnectionCheck, EthernetNetwork, NetworkMacAddresses,
-    NetworkSettings, NetworkTransport, SavedNetwork, SavedNetworkDetails, WifiNetwork,
+    Connectivity, ConnectivityReport, CurrentConnectionCheck, EthernetNetwork, NetworkDraft,
+    NetworkMacAddresses, NetworkSettings, NetworkTransport, SavedNetwork, SavedNetworkDetails,
+    WifiNetwork,
 };
 use crate::network::{NetworkController, NetworkError, Result as NetResult};
 use async_trait::async_trait;
@@ -11,15 +13,8 @@ use std::time::Duration;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-#[derive(Clone)]
-struct MockTestRecord {
-    state: ConnectionState,
-    settings: NetworkSettings,
-    transport: NetworkTransport,
-}
-
 pub struct MockNetworkController {
-    tests: Arc<Mutex<HashMap<Uuid, MockTestRecord>>>,
+    tests: Arc<Mutex<HashMap<Uuid, TestRecord>>>,
     saved: Arc<Mutex<Option<SavedNetwork>>>,
     saved_settings: Mutex<NetworkSettings>,
     endpoint_groups: Arc<Vec<crate::config::EndpointGroup>>,
@@ -66,6 +61,23 @@ impl MockNetworkController {
         mut settings: NetworkSettings,
         transport: NetworkTransport,
     ) -> NetResult<Uuid> {
+        let source_draft = if let Some(id) = settings
+            .id
+            .as_deref()
+            .and_then(|id| Uuid::parse_str(id).ok())
+        {
+            let mut tests = self.tests.lock().await;
+            drafts::prune(&mut tests);
+            tests
+                .get(&id)
+                .filter(|record| !matches!(record.state, ConnectionState::Saved(_)))
+                .cloned()
+        } else {
+            None
+        };
+        if let Some(draft) = source_draft {
+            draft.retain_credentials(&transport, &mut settings)?;
+        }
         if let Some(id) = settings.id.clone() {
             let details = self.get_saved_network(&id).await?;
             if details.network.transport != transport
@@ -84,13 +96,10 @@ impl MockNetworkController {
         let test_id = Uuid::new_v4();
         {
             let mut tests = self.tests.lock().await;
-            tests.insert(
+            drafts::insert(
+                &mut tests,
                 test_id,
-                MockTestRecord {
-                    state: ConnectionState::Testing,
-                    settings: settings.clone(),
-                    transport: transport.clone(),
-                },
+                TestRecord::new(settings.clone(), transport.clone()),
             );
         }
 
@@ -115,7 +124,7 @@ impl MockNetworkController {
             };
 
             if ok {
-                record.state = ConnectionState::Connected(ConnectivityReport {
+                record.finish(ConnectionState::Connected(ConnectivityReport {
                     interface: if transport == NetworkTransport::Wifi {
                         "wlan0"
                     } else {
@@ -134,10 +143,11 @@ impl MockNetworkController {
                             )
                         })
                         .collect(),
-                });
+                }));
             } else {
-                record.state =
-                    ConnectionState::Failed("Incorrect password or network out of range".into());
+                record.finish(ConnectionState::Failed(
+                    "Incorrect password or network out of range".into(),
+                ));
             }
         });
 
@@ -222,21 +232,42 @@ impl NetworkController for MockNetworkController {
         self.start_test(settings, NetworkTransport::Ethernet).await
     }
 
-    async fn connection_status(&self, test_id: Uuid) -> NetResult<ConnectionState> {
-        let tests = self.tests.lock().await;
+    async fn get_drafts(&self) -> NetResult<Vec<NetworkDraft>> {
+        Ok(drafts::list(&mut *self.tests.lock().await))
+    }
+
+    async fn get_draft(&self, test_id: Uuid) -> NetResult<SavedNetworkDetails> {
+        let mut tests = self.tests.lock().await;
+        drafts::prune(&mut tests);
         tests
             .get(&test_id)
-            .map(|r| r.state.clone())
-            .ok_or_else(|| NetworkError::NotFound("Test ID not found".into()))
+            .ok_or_else(|| {
+                NetworkError::NotFound(
+                    "Draft expired or was discarded. Add a network to start again.".into(),
+                )
+            })?
+            .details(test_id)
+    }
+
+    async fn connection_status(&self, test_id: Uuid) -> NetResult<ConnectionState> {
+        let mut tests = self.tests.lock().await;
+        drafts::prune(&mut tests);
+        tests.get(&test_id).map(|r| r.state.clone()).ok_or_else(|| {
+            NetworkError::NotFound(
+                "This test expired or was discarded. Add a network to start again.".into(),
+            )
+        })
     }
 
     async fn save_test(&self, test_id: Uuid) -> NetResult<()> {
         let record = {
-            let tests = self.tests.lock().await;
-            tests
-                .get(&test_id)
-                .cloned()
-                .ok_or_else(|| NetworkError::NotFound("Test ID not found".into()))?
+            let mut tests = self.tests.lock().await;
+            drafts::prune(&mut tests);
+            tests.get(&test_id).cloned().ok_or_else(|| {
+                NetworkError::NotFound(
+                    "This test expired or was discarded. Add a network to start again.".into(),
+                )
+            })?
         };
 
         let ConnectionState::Connected(report) = record.state else {
@@ -260,17 +291,29 @@ impl NetworkController for MockNetworkController {
         });
 
         if let Some(record) = self.tests.lock().await.get_mut(&test_id) {
-            record.state = ConnectionState::Saved(report);
+            record.finish(ConnectionState::Saved(report));
         }
         Ok(())
     }
 
     async fn discard_test(&self, test_id: Uuid) -> NetResult<()> {
         let mut tests = self.tests.lock().await;
-        tests
-            .remove(&test_id)
-            .map(|_| ())
-            .ok_or_else(|| NetworkError::NotFound("Test ID not found".into()))
+        drafts::prune(&mut tests);
+        if tests.get(&test_id).is_some_and(|record| {
+            matches!(
+                record.state,
+                ConnectionState::Testing | ConnectionState::Saving
+            )
+        }) {
+            return Err(NetworkError::ConnectionFailed(
+                "Wait for the network operation to finish before discarding".into(),
+            ));
+        }
+        tests.remove(&test_id).map(|_| ()).ok_or_else(|| {
+            NetworkError::NotFound(
+                "This test expired or was discarded. Add a network to start again.".into(),
+            )
+        })
     }
 
     async fn forget_network(&self, _id: &str) -> NetResult<()> {

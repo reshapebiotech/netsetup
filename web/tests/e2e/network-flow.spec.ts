@@ -25,6 +25,7 @@ const unavailableGroups = report.endpoint_groups.map(group => ({ ...group,
 }));
 
 test.beforeEach(async ({ page }) => {
+  await page.route('**/api/network/tests', route => route.fulfill({ json: [] }));
   await page.route('**/api/network/connectivity/groups', route => route.fulfill({ json: groups }));
   await page.route('**/api/device', route => route.fulfill({ json: { hostname: 'RS-12345' } }));
   await page.route('**/api/network/connectivity', route =>
@@ -446,6 +447,7 @@ test('DNS help does not activate its input or restart idle form focus', async ({
   await expect(dns).not.toBeFocused();
   expect(connectivityPolls).toBe(1);
   await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: 'Connectivity', exact: true }).click();
+  await expect(page).toHaveURL(/\/connectivity$/);
   await page.clock.runFor(5_000);
   await expect.poll(() => connectivityPolls).toBeGreaterThan(1);
 });
@@ -622,7 +624,7 @@ test('page actions keep save visible and let the final report scroll above the b
       return !!text && !!footer && text.y >= 0 && text.y + text.height <= footer.y;
     }).toBe(true);
     const primary = await save.boundingBox();
-    const secondary = await bar.getByRole('button', { name: 'Change network' }).boundingBox();
+    const secondary = await bar.getByRole('button', { name: 'Edit settings' }).boundingBox();
     expect(primary!.x).toBeGreaterThan(secondary!.x);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
   }
@@ -704,4 +706,138 @@ test('page actions sit above the report on desktop and only pin on phones', asyn
   await page.setViewportSize({ width: 1280, height: 800 });
   await expect.poll(() => page.evaluate(() => document.documentElement.style.getPropertyValue('--netsetup-actions-height'))).toBe('0px');
   expect(await bar.evaluate(element => getComputedStyle(element).position)).toBe('static');
+});
+
+for (const state of ['Testing', 'Connected', 'Saving'] as const) {
+  test(`draft recovery after captive browser closes: ${state}`, async ({ browser }) => {
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 },
+      ...(test.info().project.name === 'webkit' ? { isMobile: true, hasTouch: true } : {}) });
+    let current: string = state;
+    let discarded = false;
+    let statusCalls = 0;
+    const mutations: string[] = [];
+    await context.route('**/api/device', route => route.fulfill({ json: { hostname: 'RIS0312' } }));
+    await context.route('**/api/network/**', route => {
+      const url = new URL(route.request().url()).pathname;
+      if (route.request().method() !== 'GET') mutations.push(url);
+      if (url.endsWith('/tests')) return route.fulfill({ json: discarded || current === 'Saved' ? [] : [{
+        test_id: 'interrupted', transport: 'wifi', display_name: 'Lab Wi-Fi',
+        state: current === 'Testing' || current === 'Saving' ? { status: current } : { status: current, detail: report }
+      }] });
+      if (url.endsWith('/status/interrupted')) {
+        if (++statusCalls > 1) current = state === 'Saving' ? 'Saved' : 'Connected';
+        return route.fulfill({ json: { status: current, detail: report } });
+      }
+      if (url.endsWith('/discard')) { discarded = true; return route.fulfill({ status: 204 }); }
+      if (url.endsWith('/saved')) return route.fulfill({ json: [] });
+      if (url.endsWith('/access_point/controller')) return route.fulfill({ json: { ssid: 'RIS0312' } });
+      return route.fulfill({ json: { is_connected: true, can_reach_host: true } });
+    });
+    const original = await context.newPage();
+    await original.goto('/help');
+    await original.close();
+    const reopened = await context.newPage();
+    await reopened.goto('/');
+    if (state === 'Saving') {
+      await expect(reopened).toHaveURL(/save-handoff\/interrupted$/);
+      await expect(reopened.getByText('Connection saved. Full service connectivity.', { exact: true })).toBeVisible();
+    } else {
+      if (state === 'Testing') {
+        await expect(reopened).toHaveURL(/testing\/interrupted$/);
+        await expect(reopened.getByRole('list').getByText('RIS0312', { exact: true })).toBeVisible();
+      }
+      await expect(reopened).toHaveURL(/result\/interrupted$/);
+      await expect(reopened.getByRole('button', { name: 'Save connection', exact: true })).toBeVisible();
+      await reopened.getByRole('link', { name: 'Network', exact: true }).click();
+      const unfinished = reopened.getByRole('region', { name: 'Unfinished setup' });
+      await expect(unfinished.getByText('Lab Wi-Fi', { exact: true })).toBeVisible();
+      await unfinished.getByRole('button', { name: 'Resume', exact: true }).click();
+      await expect(reopened).toHaveURL(/result\/interrupted$/);
+      await reopened.getByRole('link', { name: 'Network', exact: true }).click();
+      await unfinished.getByRole('button', { name: 'Discard', exact: true }).click();
+      await expect(unfinished).toHaveCount(0);
+    }
+    expect(mutations).toEqual(state === 'Saving' ? [] : ['/api/network/tests/interrupted/discard']);
+    expect(await reopened.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await context.close();
+  });
+}
+
+test('failed draft restores settings and retries without sending its password to the browser', async ({ page }) => {
+  await page.route('**/api/network/tests', route => route.fulfill({ json: [{
+    test_id: 'failed-draft', transport: 'wifi', display_name: 'Lab Wi-Fi',
+    state: { status: 'Failed', detail: 'Connection failed. The previous connection has been restored.' }
+  }] }));
+  await page.route('**/api/network/saved', route => route.fulfill({ json: [] }));
+  await page.route('**/api/network/status/failed-draft', route => route.fulfill({ json: {
+    status: 'Failed', detail: 'Connection failed. The previous connection has been restored.'
+  } }));
+  await page.route('**/api/network/tests/failed-draft', route => route.fulfill({ json: {
+    network: { id: 'failed-draft', transport: 'wifi', display_name: 'Lab Wi-Fi', managed: false },
+    settings: { ssid: 'Lab Wi-Fi', ipv4: { method: 'auto', dns: ['9.9.9.9'] } },
+    security: 'personal', edit_unavailable: null
+  } }));
+  await page.route('**/api/network/wifi/scan', route => route.fulfill({ json: [] }));
+  let submitted: Record<string, unknown> | null = null;
+  await page.route('**/api/network/wifi/test', route => {
+    submitted = route.request().postDataJSON();
+    return route.fulfill({ status: 202, json: { test_id: 'retried' } });
+  });
+  await page.route('**/api/network/status/retried', route => route.fulfill({ json: { status: 'Testing' } }));
+  await page.goto('/');
+  const unfinished = page.getByRole('region', { name: 'Unfinished setup' });
+  await expect(unfinished).toBeVisible();
+  await unfinished.getByRole('button', { name: 'Resume', exact: true }).click();
+  await page.getByRole('button', { name: 'Edit and retry', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: 'SSID', exact: true })).toHaveValue('Lab Wi-Fi');
+  await expect(page.getByLabel('Custom DNS servers (comma separated)')).toHaveValue('9.9.9.9');
+  await expect(page.getByLabel('Keep draft password')).toBeChecked();
+  await expect(page.getByLabel('Password', { exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Test connection', exact: true }).click();
+  await expect(page).toHaveURL(/testing\/retried$/);
+  expect(submitted).toMatchObject({ id: 'failed-draft', ssid: 'Lab Wi-Fi', ipv4: { dns: ['9.9.9.9'] } });
+  expect(submitted).not.toHaveProperty('password');
+  expect(submitted).not.toHaveProperty('eap_password');
+});
+
+test('expired draft offers a new setup instead of saving a stale result', async ({ page }) => {
+  await page.route('**/api/network/status/expired', route => route.fulfill({ status: 404, json: {
+    error: 'This test expired or was discarded. Add a network to start again.'
+  } }));
+  await page.goto('/setup/new/wifi/testing/expired');
+  await expect(page).toHaveURL(/result\/expired$/);
+  await expect(page.getByRole('button', { name: 'Start again', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Save connection', exact: true })).toHaveCount(0);
+});
+
+test('Apple captive portal blocks idle input focus and preserves deliberate editing', async ({ page, browserName }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'userAgent', { get: () =>
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/22A3354' });
+  });
+  await page.clock.install();
+  await page.route('**/api/network/wifi/scan', route => route.fulfill({ json: [] }));
+  await page.goto('/setup/new/wifi');
+  await expect(page.getByText('Online', { exact: true })).toBeVisible();
+  const dns = page.getByLabel('Custom DNS servers', { exact: false });
+  const restoreFocusAfterDelay = async () => {
+    await dns.evaluate(input => { window.setTimeout(() => input.focus(), 5000); });
+    await page.clock.runFor(6000);
+    await expect(dns).not.toBeFocused();
+  };
+  for (let attempt = 0; attempt < 3; attempt++) await restoreFocusAfterDelay();
+  await dns.click();
+  await expect(dns).toBeFocused();
+  await dns.fill('9.9.9.9');
+  await page.getByRole('heading', { name: 'IPv4 and DNS', exact: true }).click();
+  await expect(dns).not.toBeFocused();
+  await restoreFocusAfterDelay();
+  await expect(dns).toHaveValue('9.9.9.9');
+  await page.getByText('Custom DNS servers (comma separated)', { exact: true }).click();
+  await expect(dns).toBeFocused();
+  await dns.press(browserName === 'webkit' ? 'Alt+Shift+Tab' : 'Shift+Tab');
+  await page.keyboard.press(browserName === 'webkit' ? 'Alt+Tab' : 'Tab');
+  await expect(dns).toBeFocused();
+  await page.getByRole('heading', { name: 'IPv4 and DNS', exact: true }).click();
+
 });

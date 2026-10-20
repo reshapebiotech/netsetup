@@ -5,6 +5,8 @@
   import '../app.css';
   import { branding } from '#lib/branding.js';
   import { networkApi } from '#lib/network/api.js';
+  import { draftUrl } from '#lib/network/drafts.js';
+  import { goto } from '$app/navigation';
   import Icon from '#lib/components/ui/icon.svelte';
 
   const device = $state<{ hostname: string | null }>({ hostname: null });
@@ -65,6 +67,14 @@
   }
 
   onMount(() => {
+    let cancelled = false;
+    if (page.url.pathname === '/') {
+      void networkApi.listDrafts().then(drafts => {
+        if (cancelled || page.url.pathname !== '/') return;
+        const draft = drafts.find(draft => ['Testing', 'Connected', 'Saving'].includes(draft.state.status));
+        if (draft) void goto(draftUrl(draft), { replaceState: true });
+      }).catch(() => {});
+    }
     void networkApi.getDeviceInfo().then(info => {
       if (typeof info.hostname === 'string' && info.hostname) device.hostname = info.hostname;
     }).catch(() => {});
@@ -72,7 +82,7 @@
     const timer = window.setInterval(() => {
       if (!editingNetwork) void refreshDeviceStatus();
     }, 5000);
-    return () => window.clearInterval(timer);
+    return () => { cancelled = true; window.clearInterval(timer); };
   });
 </script>
 

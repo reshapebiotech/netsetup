@@ -8,11 +8,11 @@
   import Loading from '#lib/components/ui/loading.svelte';
   import Button from '#lib/components/ui/button.svelte';
   import Icon from '#lib/components/ui/icon.svelte';
-  import { networkApi } from '#lib/network/api.js';
+  import { networkApi, NetworkApiError } from '#lib/network/api.js';
 
   const transport = $derived(page.params.transport === 'ethernet' ? 'ethernet' : 'wifi');
   const testId = $derived(page.params.testId ?? '');
-  const setupWifiName = $derived(page.state.setupWifiName ?? null);
+  let setupWifiName = $state<string | null>(page.state.setupWifiName ?? null);
   let waitingForApi = $state(false);
   let timedOut = $state(false);
   let cancelled = false;
@@ -28,7 +28,12 @@
           await goto(`/setup/new/${transport}/result/${testId}`);
           return;
         }
-      } catch {
+      } catch (e) {
+        if (cancelled) return;
+        if (e instanceof NetworkApiError && e.status === 404) {
+          await goto(`/setup/new/${transport}/result/${testId}`);
+          return;
+        }
         waitingForApi = true;
       }
       await new Promise((resolve) => setTimeout(resolve, 1500));
@@ -37,6 +42,9 @@
   }
 
   onMount(() => {
+    void networkApi.getApControllerStatus().then(status => {
+      if (!cancelled && typeof status.ssid === 'string' && status.ssid) setupWifiName = status.ssid;
+    }).catch(() => {});
     void poll();
     return () => { cancelled = true; };
   });

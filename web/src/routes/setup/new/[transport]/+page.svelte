@@ -10,6 +10,7 @@
   import Loading from '#lib/components/ui/loading.svelte';
   import Icon from '#lib/components/ui/icon.svelte';
   import { networkApi } from '#lib/network/api.js';
+  import { captiveFocus } from '#lib/network/captive-focus.js';
   import type { NetworkSettings, SavedNetworkDetails, Transport, WifiNetwork } from '#lib/network/types.js';
   import { buildSettingsFromForm } from '#lib/network/settings.js';
   import { validateSettings } from '#lib/network/validators.js';
@@ -17,7 +18,8 @@
 
   const transport = $derived<Transport>(page.params.transport === 'ethernet' ? 'ethernet' : 'wifi');
 
-  const editId = $derived(page.url.searchParams.get('edit'));
+  const draftId = $derived(page.url.searchParams.get('draft'));
+  const editId = $derived(draftId ?? page.url.searchParams.get('edit'));
   let original = $state<SavedNetworkDetails | null>(null);
   let profileLoading = $state(true);
   let profileError = $state('');
@@ -100,7 +102,7 @@
   async function initialize() {
     if (editId) {
       try {
-        original = await networkApi.getSaved(editId);
+        original = draftId ? await networkApi.getDraft(draftId) : await networkApi.getSaved(editId);
         if (original.network.transport !== transport || original.edit_unavailable) {
           throw new Error(original.edit_unavailable ?? 'This network uses a different connection type.');
         }
@@ -173,7 +175,7 @@
   }
 </script>
 
-<div class="space-y-6">
+<div class="space-y-6" {@attach captiveFocus}>
   <header class="space-y-2">
     <p class="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">{editId ? 'Edit' : 'New'} {transport} profile</p>
     <h1 class="flex items-center gap-2 text-3xl font-semibold">
@@ -186,6 +188,7 @@
     <Loading label="Loading saved settings…" />
   {:else if profileError}
     <Alert tone="error">{profileError}</Alert>
+    <a href="/" class="inline-flex min-h-11 items-center font-medium text-primary hover:underline">Back to networks →</a>
   {/if}
 
   {#if submitError}
@@ -244,7 +247,7 @@
       {#if !enterprise && canKeepPassword}
         <label class="flex items-center gap-3 rounded-lg border border-border bg-background/30 px-3 py-3 text-sm">
           <input type="checkbox" bind:checked={keepPassword} class="rounded border-input" />
-          Keep saved password
+          {draftId ? 'Keep draft password' : 'Keep saved password'}
         </label>
       {/if}
 
@@ -297,7 +300,7 @@
       {#if canKeepPassword}
         <label class="flex items-center gap-3 rounded-lg border border-border bg-background/30 px-3 py-3 text-sm">
           <input type="checkbox" bind:checked={keepPassword} class="rounded border-input" />
-          Keep saved password
+          {draftId ? 'Keep draft password' : 'Keep saved password'}
         </label>
       {/if}
 

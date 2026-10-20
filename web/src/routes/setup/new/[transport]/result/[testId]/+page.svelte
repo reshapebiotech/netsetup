@@ -9,7 +9,7 @@
   import Loading from '#lib/components/ui/loading.svelte';
   import Icon from '#lib/components/ui/icon.svelte';
   import { servicesReady } from '#lib/network/results.js';
-  import { networkApi } from '#lib/network/api.js';
+  import { networkApi, NetworkApiError } from '#lib/network/api.js';
   import ConnectionReport from '#lib/components/network/connection-report.svelte';
   import type { ConnectionState } from '#lib/network/types.js';
 
@@ -19,13 +19,16 @@
   let loading = $state(true);
   let movingToSave = $state(false);
   let error = $state('');
+  let expired = $state(false);
 
   async function loadStatus() {
     loading = true;
     error = '';
+    expired = false;
     try {
       status = await networkApi.getStatus(testId);
     } catch (e) {
+      expired = e instanceof NetworkApiError && e.status === 404;
       error = e instanceof Error ? e.message : 'Failed to load test status';
     } finally {
       loading = false;
@@ -42,10 +45,9 @@
   async function retry() {
     error = '';
     try {
-      await networkApi.discardTest(testId);
-      await goto(`/setup/new/${transport}`);
+      await goto(`/setup/new/${transport}?draft=${encodeURIComponent(testId)}`);
     } catch (e) {
-      error = e instanceof Error ? e.message : 'Could not discard this test';
+      error = e instanceof Error ? e.message : 'Could not open draft settings';
     }
   }
 
@@ -64,11 +66,13 @@
     <PageActions note={status?.status === 'Connected' ? 'Settings not saved yet' : undefined}>
       {#snippet secondary()}
         {#if status?.status === 'Connected' && !error}
-          <Button variant="secondary" disabled={movingToSave} onclick={retry}>Change network</Button>
+          <Button variant="secondary" disabled={movingToSave} onclick={retry}>Edit settings</Button>
         {/if}
       {/snippet}
       {#snippet primary()}
-        {#if error}
+        {#if expired}
+          <Button onclick={() => goto(`/setup/new/${transport}`)}>Start again</Button>
+        {:else if error}
           <Button onclick={loadStatus}>Reload result</Button>
         {:else if status?.status === 'Connected'}
           <Button onclick={save} loading={movingToSave}>
@@ -76,7 +80,7 @@
             {servicesReady(status.detail) ? 'Save connection' : 'Save anyway'}
           </Button>
         {:else if status?.status === 'Failed'}
-          <Button onclick={retry}>Try again</Button>
+          <Button onclick={retry}>Edit and retry</Button>
         {:else if status?.status === 'Saved'}
           <Button onclick={() => goto('/')}>Back to home</Button>
         {:else}

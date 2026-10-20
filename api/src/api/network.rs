@@ -11,8 +11,8 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::network::types::{
-    AccessPointControllerStatus, AccessPointPreferences, AccessPointStatus, ConnectionState,
-    Connectivity, CurrentConnectionCheck, EthernetNetwork, NetworkMacAddresses, NetworkSettings,
+    AccessPointControllerStatus, AccessPointPreferences, AccessPointStatus, Connectivity,
+    CurrentConnectionCheck, EthernetNetwork, NetworkDraft, NetworkMacAddresses, NetworkSettings,
     SavedNetwork, SavedNetworkDetails, WifiNetwork,
 };
 use crate::network::{NetworkController, NetworkError};
@@ -31,6 +31,8 @@ pub fn router() -> Router<AppState> {
         .route("/saved/{id}", get(get_saved_network).delete(forget_saved))
         .route("/wifi/test", post(test_wifi))
         .route("/ethernet/test", post(test_ethernet))
+        .route("/tests", get(get_drafts))
+        .route("/tests/{test_id}", get(get_draft))
         .route("/tests/{test_id}/save", post(save_test))
         .route("/tests/{test_id}/discard", post(discard_test))
         .route("/wifi/connect", post(connect_wifi_compat))
@@ -81,6 +83,25 @@ async fn scan_ethernet(
 async fn get_saved(State(state): State<AppState>) -> Result<Json<Vec<SavedNetwork>>, NetworkError> {
     let saved = state.network.get_saved_networks().await?;
     Ok(Json(saved))
+}
+
+async fn get_drafts(State(state): State<AppState>) -> Result<impl IntoResponse, NetworkError> {
+    let drafts: Vec<NetworkDraft> = state.network.get_drafts().await?;
+    Ok((
+        [(axum::http::header::CACHE_CONTROL, "no-store")],
+        Json(drafts),
+    ))
+}
+
+async fn get_draft(
+    State(state): State<AppState>,
+    Path(test_id): Path<Uuid>,
+) -> Result<impl IntoResponse, NetworkError> {
+    let draft = state.network.get_draft(test_id).await?;
+    Ok((
+        [(axum::http::header::CACHE_CONTROL, "no-store")],
+        Json(draft),
+    ))
 }
 
 async fn get_saved_network(
@@ -261,9 +282,12 @@ async fn connect_ethernet_compat(
 async fn status(
     State(state): State<AppState>,
     Path(test_id): Path<Uuid>,
-) -> Result<Json<ConnectionState>, NetworkError> {
+) -> Result<impl IntoResponse, NetworkError> {
     let current_status = state.network.connection_status(test_id).await?;
-    Ok(Json(current_status))
+    Ok((
+        [(axum::http::header::CACHE_CONTROL, "no-store")],
+        Json(current_status),
+    ))
 }
 
 async fn get_hotspot_status(
@@ -325,6 +349,7 @@ async fn set_ap_preferences(
 mod tests {
     use crate::api::network::{AppState, router};
     use crate::network::mock::MockNetworkController;
+    use axum::http::StatusCode;
     use axum_test::TestServer;
     use serde_json::json;
     use std::sync::Arc;
@@ -370,6 +395,126 @@ mod tests {
             .json::<serde_json::Value>();
         assert_eq!(saved["settings"]["ipv4"]["dns"][0], "9.9.9.9");
         assert!(saved["settings"]["password"].is_null());
+    }
+
+    async fn wait_for_test(server: &TestServer, id: &str) -> serde_json::Value {
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            loop {
+                let state = server
+                    .get(&format!("/status/{id}"))
+                    .await
+                    .json::<serde_json::Value>();
+                if state["status"] != "Testing" {
+                    return state;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+        })
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn recovers_tests_without_exposing_credentials_and_retries_with_retained_password() {
+        let server = get_test_server();
+        let started = server
+            .post("/wifi/test")
+            .json(&json!({
+                "ssid": "Home_Network", "password": "password",
+                "ipv4": { "method": "auto", "dns": ["9.9.9.9"] }
+            }))
+            .await;
+        started.assert_status(StatusCode::ACCEPTED);
+        let id = started.json::<serde_json::Value>()["test_id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let response = server.get("/tests").await;
+        response.assert_status_ok();
+        response.assert_header("cache-control", "no-store");
+        let drafts = response.json::<serde_json::Value>();
+        assert_eq!(drafts[0]["test_id"], id);
+        assert_eq!(drafts[0]["state"]["status"], "Testing");
+        assert!(drafts[0].get("settings").is_none());
+        let details = server.get(&format!("/tests/{id}")).await;
+        details.assert_status_ok();
+        details.assert_header("cache-control", "no-store");
+        let details = details.json::<serde_json::Value>();
+        assert!(details["settings"]["password"].is_null());
+        assert!(details["settings"]["eap_password"].is_null());
+        assert_eq!(details["settings"]["ipv4"]["dns"][0], "9.9.9.9");
+        server
+            .post(&format!("/tests/{id}/discard"))
+            .await
+            .assert_status(StatusCode::BAD_REQUEST);
+        assert_eq!(wait_for_test(&server, &id).await["status"], "Connected");
+        server
+            .post("/wifi/test")
+            .json(&json!({ "id": id, "ssid": "Different" }))
+            .await
+            .assert_status(StatusCode::BAD_REQUEST);
+        let retried = server
+            .post("/wifi/test")
+            .json(&json!({ "id": id, "ssid": "Home_Network" }))
+            .await;
+        retried.assert_status(StatusCode::ACCEPTED);
+        let retry_id = retried.json::<serde_json::Value>()["test_id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let drafts = server.get("/tests").await.json::<serde_json::Value>();
+        assert_eq!(drafts.as_array().unwrap().len(), 1);
+        assert_eq!(drafts[0]["test_id"], retry_id);
+        assert_eq!(
+            wait_for_test(&server, &retry_id).await["status"],
+            "Connected"
+        );
+        server
+            .post(&format!("/tests/{retry_id}/save"))
+            .await
+            .assert_status(StatusCode::ACCEPTED);
+        assert_eq!(
+            server.get("/tests").await.json::<serde_json::Value>(),
+            json!([])
+        );
+        server
+            .get(&format!("/tests/{retry_id}"))
+            .await
+            .assert_status(StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn discarding_a_finished_draft_removes_recovery_and_save_access() {
+        let server = get_test_server();
+        let started = server
+            .post("/wifi/test")
+            .json(&json!({ "ssid": "Home_Network", "password": "incorrect" }))
+            .await;
+        let id = started.json::<serde_json::Value>()["test_id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        assert_eq!(wait_for_test(&server, &id).await["status"], "Failed");
+        assert_eq!(
+            server.get("/tests").await.json::<serde_json::Value>()[0]["state"]["status"],
+            "Failed"
+        );
+        server
+            .post(&format!("/tests/{id}/discard"))
+            .await
+            .assert_status(StatusCode::NO_CONTENT);
+        assert_eq!(
+            server.get("/tests").await.json::<serde_json::Value>(),
+            json!([])
+        );
+        server
+            .get(&format!("/tests/{id}"))
+            .await
+            .assert_status(StatusCode::NOT_FOUND);
+        server
+            .post(&format!("/tests/{id}/save"))
+            .await
+            .assert_status(StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]

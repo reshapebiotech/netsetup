@@ -7,7 +7,7 @@
   import Button from '#lib/components/ui/button.svelte';
   import Alert from '#lib/components/ui/alert.svelte';
   import Loading from '#lib/components/ui/loading.svelte';
-  import { networkApi } from '#lib/network/api.js';
+  import { networkApi, NetworkApiError } from '#lib/network/api.js';
   import { resultSummary } from '#lib/network/results.js';
   import { deviceHandoffUrl } from '#lib/network/handoff.js';
 
@@ -18,6 +18,7 @@
   let status = $state<'saving' | 'saved' | 'unconfirmed' | 'error'>('saving');
   let message = $state('Applying and verifying your connection…');
   let cancelled = false;
+  let expired = $state(false);
 
   async function checkOutcome() {
     const deadline = Date.now() + 180_000;
@@ -37,7 +38,13 @@
           return;
         }
         if (current.status === 'Connected') break;
-      } catch {
+      } catch (e) {
+        if (e instanceof NetworkApiError && e.status === 404) {
+          expired = true;
+          status = 'error';
+          message = e.message;
+          return;
+        }
         // Poll again when the device becomes reachable after switching networks.
       }
       await new Promise((resolve) => setTimeout(resolve, 1500));
@@ -104,7 +111,7 @@
         {:else if deviceUrl && status === 'unconfirmed'}<Button variant="secondary" onclick={saveNow}>Check again</Button>{/if}
       {/snippet}
       {#snippet primary()}
-        {#if status === 'error'}<Button onclick={() => goto(`/setup/new/${page.params.transport}`)}>Configure again</Button>
+        {#if status === 'error'}<Button onclick={() => goto(expired ? `/setup/new/${transport}` : `/setup/new/${transport}?draft=${encodeURIComponent(testId)}`)}>Configure again</Button>
         {:else if deviceUrl}<a href={deviceUrl} class="inline-flex min-h-11 items-center rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground">Open netsetup</a>
         {:else if status === 'unconfirmed'}<Button onclick={saveNow}>Check again</Button>
         {:else if status === 'saved'}<Button onclick={() => goto('/')}>Return home</Button>{/if}

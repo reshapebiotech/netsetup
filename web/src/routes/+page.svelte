@@ -8,9 +8,14 @@
   import Loading from '#lib/components/ui/loading.svelte';
   import Icon from '#lib/components/ui/icon.svelte';
   import { networkApi } from '#lib/network/api.js';
-  import type { SavedNetwork } from '#lib/network/types.js';
+  import { draftDescription, draftUrl } from '#lib/network/drafts.js';
+  import type { NetworkDraft, SavedNetwork } from '#lib/network/types.js';
 
   let saved = $state<SavedNetwork[]>([]);
+  let drafts = $state<NetworkDraft[]>([]);
+  let draftError = $state('');
+  let discardingDraft = $state('');
+
   let loading = $state(true);
   let error = $state('');
   let deletingId = $state('');
@@ -23,6 +28,25 @@
   let resetConfirming = $state(false);
   let resetMessage = $state('');
   let resetMessageTone = $state<'' | 'info' | 'error'>('');
+
+  async function loadDrafts() {
+    try {
+      drafts = await networkApi.listDrafts();
+      draftError = '';
+    } catch (e) {
+      draftError = e instanceof Error ? e.message : 'Could not load unfinished setup';
+    }
+  }
+
+  async function discardDraft(id: string) {
+    discardingDraft = id;
+    try {
+      await networkApi.discardTest(id);
+      await loadDrafts();
+    } catch (e) {
+      draftError = e instanceof Error ? e.message : 'Could not discard unfinished setup';
+    } finally { discardingDraft = ''; }
+  }
 
   async function loadSaved() {
     loading = true;
@@ -49,6 +73,7 @@
 
   function refreshHome() {
     void loadSaved();
+    void loadDrafts();
     void loadConnectivityHint();
   }
 
@@ -100,6 +125,7 @@
       resetMessage = 'All saved networks were reset.';
       resetMessageTone = 'info';
       await loadSaved();
+      await loadDrafts();
       await loadConnectivityHint();
     } catch (e) {
       resetMessage = e instanceof Error ? e.message : 'Failed to reset all saved networks';
@@ -128,6 +154,28 @@
         Refresh
       </Button>
     </div>
+
+    {#if draftError}<Alert tone="error">{draftError}</Alert>{/if}
+    {#if drafts.length}
+      <section aria-label="Unfinished setup" class="space-y-3">
+        <h3 class="text-sm font-semibold">Unfinished setup</h3>
+        {#each drafts as draft (draft.test_id)}
+          <div class="flex flex-wrap items-center gap-3 rounded-lg border border-primary/30 bg-primary/5 p-4">
+            <div class="min-w-0 flex-1 basis-40">
+              <p class="break-words text-sm font-medium"><bdi>{draft.display_name}</bdi></p>
+              <p class="mt-1 text-xs text-muted-foreground">{draftDescription(draft)}</p>
+            </div>
+            <div class="flex gap-2">
+              <Button variant="secondary" loading={discardingDraft === draft.test_id}
+                disabled={!!discardingDraft || draft.state.status === 'Testing' || draft.state.status === 'Saving'}
+                onclick={() => discardDraft(draft.test_id)}>Discard</Button>
+              <Button onclick={() => goto(draftUrl(draft))}>Resume</Button>
+            </div>
+          </div>
+        {/each}
+        <p class="text-xs text-muted-foreground">Unfinished settings are kept on this device for 30 minutes after a test or save finishes. Restarting netsetup clears them.</p>
+      </section>
+    {/if}
 
     {#if loading}
       <Loading label="Loading configured network…" />

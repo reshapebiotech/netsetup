@@ -1,4 +1,5 @@
 import type {
+  NetworkDraft,
   CurrentConnectionCheck,
   EndpointGroupConfig,
   AccessPointControllerStatus,
@@ -22,6 +23,10 @@ const TIMEOUT_FAST_MS = 4_000;
 const TIMEOUT_DEFAULT_MS = 12_000;
 const TIMEOUT_SLOW_MS = 20_000;
 
+export class NetworkApiError extends Error {
+  constructor(message: string, readonly status: number) { super(message); }
+}
+
 async function parseOrThrow(res: Response) {
   if (!res.ok) {
     let message = `Request failed (${res.status})`;
@@ -31,7 +36,7 @@ async function parseOrThrow(res: Response) {
     } catch {
       // noop
     }
-    throw new Error(message);
+    throw new NetworkApiError(message, res.status);
   }
   return res;
 }
@@ -67,6 +72,20 @@ export const networkApi = {
   },
   async listSaved(): Promise<SavedNetwork[]> {
     const res = await withTimeout(api('/saved'));
+    await parseOrThrow(res);
+    return res.json();
+  },
+
+  async listDrafts(): Promise<NetworkDraft[]> {
+    const res = await withTimeout(api('/tests'), { cache: 'no-store' }, TIMEOUT_FAST_MS);
+    await parseOrThrow(res);
+    const drafts = await res.json();
+    if (!Array.isArray(drafts)) throw new Error('Could not load unfinished setup');
+    return drafts;
+  },
+
+  async getDraft(id: string): Promise<SavedNetworkDetails> {
+    const res = await withTimeout(api(`/tests/${encodeURIComponent(id)}`), { cache: 'no-store' });
     await parseOrThrow(res);
     return res.json();
   },
@@ -155,7 +174,7 @@ export const networkApi = {
   },
 
   async getStatus(testId: string): Promise<ConnectionState> {
-    const res = await withTimeout(api(`/status/${testId}`), undefined, TIMEOUT_FAST_MS);
+    const res = await withTimeout(api(`/status/${testId}`), { cache: 'no-store' }, TIMEOUT_FAST_MS);
     await parseOrThrow(res);
     return res.json();
   },

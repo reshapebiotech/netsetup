@@ -1,10 +1,12 @@
+use super::drafts::{self, TestRecord};
 use crate::network::ap_supervisor::{
     ApSupervisorMachine, DEFAULT_BOOT_GRACE, SupervisorAction, SupervisorInput,
 };
 use crate::network::types::{
     AccessPointControllerStatus, AccessPointPreferences, AccessPointStatus, ConnectionState,
-    Connectivity, CurrentConnectionCheck, EthernetNetwork, IpMethod, NetworkMacAddresses,
-    NetworkSettings, NetworkTransport, SavedNetwork, SavedNetworkDetails, WifiNetwork,
+    Connectivity, CurrentConnectionCheck, EthernetNetwork, IpMethod, NetworkDraft,
+    NetworkMacAddresses, NetworkSettings, NetworkTransport, SavedNetwork, SavedNetworkDetails,
+    WifiNetwork,
 };
 use crate::network::{NetworkController, NetworkError, Result as NetResult};
 use async_trait::async_trait;
@@ -17,13 +19,6 @@ use tokio::sync::Mutex;
 use tokio::time::{Duration, sleep};
 use tracing::{error, info, warn};
 use uuid::Uuid;
-
-#[derive(Clone)]
-struct TestRecord {
-    state: ConnectionState,
-    settings: NetworkSettings,
-    transport: NetworkTransport,
-}
 
 #[derive(Clone)]
 struct ApSupervisorState {
@@ -75,6 +70,23 @@ impl NmcliNetworkController {
         let guard = self.mutation.clone().try_lock_owned().map_err(|_| {
             NetworkError::ConnectionFailed("Another network operation is in progress".into())
         })?;
+        let source_draft = if let Some(id) = settings
+            .id
+            .as_deref()
+            .and_then(|id| Uuid::parse_str(id).ok())
+        {
+            let mut tests = self.active_tests.lock().await;
+            drafts::prune(&mut tests);
+            tests
+                .get(&id)
+                .filter(|record| !matches!(record.state, ConnectionState::Saved(_)))
+                .cloned()
+        } else {
+            None
+        };
+        if let Some(draft) = source_draft {
+            draft.retain_credentials(&transport, &mut settings)?;
+        }
         if let Some(id) = settings.id.clone() {
             let details = self.get_saved_network(&id).await?;
             super::profiles::retain_credentials(
@@ -89,13 +101,10 @@ impl NmcliNetworkController {
             super::transaction::select_interface(&super::transaction::SystemCommands, &transport)
                 .await?;
         let test_id = Uuid::new_v4();
-        self.active_tests.lock().await.insert(
+        drafts::insert(
+            &mut *self.active_tests.lock().await,
             test_id,
-            TestRecord {
-                state: ConnectionState::Testing,
-                settings: settings.clone(),
-                transport: transport.clone(),
-            },
+            TestRecord::new(settings.clone(), transport.clone()),
         );
         let tests = self.active_tests.clone();
         let groups = self.endpoint_groups.clone();
@@ -114,10 +123,10 @@ impl NmcliNetworkController {
             )
             .await;
             if let Some(record) = tests.lock().await.get_mut(&test_id) {
-                record.state = match result {
+                record.finish(match result {
                     Ok(report) => ConnectionState::Connected(report),
                     Err(e) => ConnectionState::Failed(e.to_string()),
-                };
+                });
             }
         });
         Ok(test_id)
@@ -182,7 +191,8 @@ impl NmcliNetworkController {
         let boot_resolved = self.ap_state.lock().await.machine.resolved();
 
         let test_in_progress = {
-            let tests = self.active_tests.lock().await;
+            let mut tests = self.active_tests.lock().await;
+            drafts::prune(&mut tests);
             tests
                 .values()
                 .any(|record| record.state == ConnectionState::Testing)
@@ -891,13 +901,35 @@ impl NetworkController for NmcliNetworkController {
         self.start_test(settings, NetworkTransport::Ethernet).await
     }
 
+    async fn get_drafts(&self) -> NetResult<Vec<NetworkDraft>> {
+        Ok(drafts::list(&mut *self.active_tests.lock().await))
+    }
+
+    async fn get_draft(&self, test_id: Uuid) -> NetResult<SavedNetworkDetails> {
+        let mut tests = self.active_tests.lock().await;
+        drafts::prune(&mut tests);
+        tests
+            .get(&test_id)
+            .ok_or_else(|| {
+                NetworkError::NotFound(
+                    "Draft expired or was discarded. Add a network to start again.".into(),
+                )
+            })?
+            .details(test_id)
+    }
+
     async fn connection_status(&self, test_id: Uuid) -> NetResult<ConnectionState> {
         self.ensure_supervisor_started().await;
-        let tests = self.active_tests.lock().await;
+        let mut tests = self.active_tests.lock().await;
+        drafts::prune(&mut tests);
         tests
             .get(&test_id)
             .map(|record| record.state.clone())
-            .ok_or_else(|| NetworkError::NotFound("Test ID not found".into()))
+            .ok_or_else(|| {
+                NetworkError::NotFound(
+                    "This test expired or was discarded. Add a network to start again.".into(),
+                )
+            })
     }
 
     async fn save_test(&self, test_id: Uuid) -> NetResult<()> {
@@ -906,9 +938,12 @@ impl NetworkController for NmcliNetworkController {
             NetworkError::ConnectionFailed("Another network operation is in progress".into())
         })?;
         let mut tests = self.active_tests.lock().await;
-        let record = tests
-            .get_mut(&test_id)
-            .ok_or_else(|| NetworkError::NotFound("Test ID not found".into()))?;
+        drafts::prune(&mut tests);
+        let record = tests.get_mut(&test_id).ok_or_else(|| {
+            NetworkError::NotFound(
+                "This test expired or was discarded. Add a network to start again.".into(),
+            )
+        })?;
         if matches!(record.state, ConnectionState::Saved(_)) {
             return Ok(());
         }
@@ -945,10 +980,10 @@ impl NetworkController for NmcliNetworkController {
             )
             .await;
             if let Some(record) = tests.lock().await.get_mut(&test_id) {
-                record.state = match result {
+                record.finish(match result {
                     Ok(report) => ConnectionState::Saved(report),
                     Err(e) => ConnectionState::Failed(e.to_string()),
-                };
+                });
             }
             ap_state.lock().await.save_in_progress = false;
         });
@@ -963,10 +998,11 @@ impl NetworkController for NmcliNetworkController {
             )
         })?;
         let mut tests = self.active_tests.lock().await;
-        tests
-            .remove(&test_id)
-            .map(|_| ())
-            .ok_or_else(|| NetworkError::NotFound("Test ID not found".into()))
+        tests.remove(&test_id).map(|_| ()).ok_or_else(|| {
+            NetworkError::NotFound(
+                "This test expired or was discarded. Add a network to start again.".into(),
+            )
+        })
     }
 
     async fn forget_network(&self, id: &str) -> NetResult<()> {
@@ -1129,7 +1165,8 @@ impl NetworkController for NmcliNetworkController {
     async fn get_ap_controller_status(&self) -> NetResult<AccessPointControllerStatus> {
         self.ensure_supervisor_started().await;
         let test_in_progress = {
-            let tests = self.active_tests.lock().await;
+            let mut tests = self.active_tests.lock().await;
+            drafts::prune(&mut tests);
             tests
                 .values()
                 .any(|record| record.state == ConnectionState::Testing)
